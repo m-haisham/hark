@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.22.1"
+base64-serde = "0.7.0"
+chrono = { version = "0.4.38", features = ["serde"] }
+imap = { git = "https://github.com/jonhoo/rust-imap", tag = "v3.0.0-alpha.12" }
+imap-proto = "0.16.5"
+itertools = "0.13.0"
+mail-parser = "0.9.3"
+serde = { version = "1.0.204", features = ["derive"] }
+thiserror = "1.0.63"
