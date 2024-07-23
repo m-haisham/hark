@@ -41,7 +41,7 @@ pub struct Attachment {
     pub content_type: Option<String>,
     pub content_disposition: Option<ContentDisposition>,
     pub content_description: Option<String>,
-    pub content_loocation: Option<String>,
+    pub content_location: Option<String>,
 }
 
 // Define a Body type that can be either text or HTML
@@ -78,7 +78,7 @@ pub struct Envelope {
 
 macro_rules! is_none {
     ($($field:expr),*) => {
-        $($field.is_none() &&)* true
+        $($field.is_none())&&*
     };
 }
 
@@ -95,7 +95,7 @@ impl Envelope {
         )
     }
 
-    pub fn sometime(self) -> Option<Self> {
+    pub fn into_option(self) -> Option<Self> {
         if self.is_empty() {
             None
         } else {

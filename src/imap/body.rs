@@ -47,7 +47,7 @@ pub fn parse_body(raw_body: &[u8]) -> Option<Message> {
 
     Some(Message {
         envelope,
-        resent: resent.sometime(),
+        resent: resent.into_option(),
         reply_to: parser_address_into_internal(message.reply_to()),
         in_reply_to: message.in_reply_to().as_text().map(ToString::to_string),
         subject: message.subject().map(ToString::to_string),
@@ -126,7 +126,7 @@ fn parse_attachment_into_internal(part: &mail_parser::MessagePart<'_>) -> Attach
         content_type: content_type_into_mime_type(part.content_type()),
         content_disposition,
         content_description: part.content_description().map(ToString::to_string),
-        content_loocation: part.content_location().map(ToString::to_string),
+        content_location: part.content_location().map(ToString::to_string),
     }
 }
 
