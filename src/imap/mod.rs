@@ -1,4 +1,5 @@
 mod body;
+pub mod types;
 
 use futures::StreamExt;
 use std::{borrow::Cow, string::FromUtf8Error};
@@ -9,7 +10,8 @@ use imap_proto::{MailboxDatum, Response};
 use itertools::Itertools;
 use tokio::net::TcpStream;
 
-use crate::{imap::body::parse_body, types::Message};
+use crate::imap::body::parse_body;
+use types::Message;
 
 #[cfg(not(debug_assertions))]
 pub type ImapStream = async_native_tls::TlsStream<TcpStream>;

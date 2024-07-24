@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use mail_parser::{ContentType, MessageParser, MimeHeaders};
 
-use crate::types::{
+use super::types::{
     Addr, Address, Attachment, ContentDisposition, Envelope, Group, Header, Message,
 };
 
