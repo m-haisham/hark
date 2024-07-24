@@ -7,4 +7,4 @@ greenmail:
 
 send-mail:
     curl smtp://localhost:3025 --mail-from haisham@mail.com \
-    --mail-rcpt haisham@mail.com --upload-file justfile
+    --mail-rcpt haisham@mail.com --upload-file email.txt
