@@ -1,7 +1,10 @@
 use chrono::Duration;
-use hark::imap::{imap_connect, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig};
+use hark::imap::{
+    imap_connect, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
+};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let host = std::env::var("HOST").expect("environment variable 'HOST' is required");
     let username = std::env::var("USER").expect("environment variable 'USER' is required");
     let password = std::env::var("PASS").expect("environment variable 'PASS' is required");
@@ -13,29 +16,29 @@ fn main() {
         .expect("environment variable 'PORT' must be a valid u16")
         .unwrap_or(993);
 
-    let session = imap_connect(&ImapConnectionConfig {
+    println!("Connecting to {}:{} as {}", host, port, username);
+
+    let mut session = imap_connect(&ImapConnectionConfig {
         host,
         port,
         auth: ImapAuth::LOGIN { username, password },
     })
-    .unwrap();
+    .await
+    .expect("failed to connect to IMAP server");
+
+    session
+        .select("INBOX")
+        .await
+        .expect("failed to select INBOX");
 
     let listen_config = ImapListenConfig {
         mailbox: "INBOX".to_string(),
         lookback_duration: Some(Duration::try_days(30).unwrap()),
     };
 
-    for result in imap_listen(session, listen_config).unwrap() {
-        match result {
-            Ok(emails) => {
-                for email in emails {
-                    println!("{email:?}");
-                }
-            }
-            Err(error) => {
-                eprintln!("{error}");
-                break;
-            }
-        }
-    }
+    println!("Listening for new messages in INBOX");
+
+    imap_idle(session)
+        .await
+        .expect("failed to enter IDLE state");
 }
