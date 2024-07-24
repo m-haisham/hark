@@ -7,6 +7,7 @@ edition = "2021"
 base64 = "0.22.1"
 base64-serde = "0.7.0"
 chrono = { version = "0.4.38", features = ["serde"] }
+futures = "0.3.30"
 imap-proto = "0.16.5"
 itertools = "0.13.0"
 mail-parser = "0.9.3"

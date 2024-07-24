@@ -1,19 +1,18 @@
 mod body;
 
+use futures::StreamExt;
 use std::{borrow::Cow, string::FromUtf8Error};
 
-use async_imap::{
-    extensions::idle::IdleResponse, types::UnsolicitedResponse, Client, Connection, Session,
-};
-use async_native_tls::TlsStream;
+use async_imap::{extensions::idle::IdleResponse, Client, Session};
 use chrono::{Duration, Utc};
+use imap_proto::{MailboxDatum, Response};
 use itertools::Itertools;
 use tokio::net::TcpStream;
 
 use crate::{imap::body::parse_body, types::Message};
 
 #[cfg(not(debug_assertions))]
-pub type ImapStream = TlsStream<TcpStream>;
+pub type ImapStream = async_native_tls::TlsStream<TcpStream>;
 
 #[cfg(debug_assertions)]
 pub type ImapStream = TcpStream;
@@ -123,7 +122,6 @@ fn check_auth_capability(
 }
 
 pub struct ImapListen {
-    session: Session<ImapStream>,
     config: ImapListenConfig,
     size: u32,
     state: ImapListenState,
@@ -153,7 +151,7 @@ pub enum ImapListenError {
 pub async fn imap_listen(
     mut session: Session<ImapStream>,
     config: ImapListenConfig,
-) -> Result<ImapListen, ImapError> {
+) -> Result<(Session<ImapStream>, ImapListen), ImapError> {
     let capability = async_imap::types::Capability::Atom(String::from("IDLE"));
 
     if !session.capabilities().await?.has(&capability) {
@@ -169,66 +167,40 @@ pub async fn imap_listen(
 
     println!("Listening to mailbox: {}", config.mailbox);
 
-    Ok(ImapListen {
+    Ok((
         session,
-        config,
-        size: mailbox.exists,
-        state,
-    })
+        ImapListen {
+            config,
+            size: mailbox.exists,
+            state,
+        },
+    ))
 }
 
-// impl Iterator for ImapListen {
-//     type Item = Result<Vec<Message>, ImapListenError>;
+async fn imap_lookback(
+    session: &mut Session<ImapStream>,
+    duration: Duration,
+) -> Result<Vec<Message>, ImapListenError> {
+    let from_date = Utc::now() - duration;
+    let formatted = from_date.format("%d-%b-%Y");
+    let uids = session.search(format!("UNSEEN SINCE {formatted}")).await?;
 
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.state {
-//             ImapListenState::Lookback(duration) => {
-//                 let result = imap_lookback(&mut self.session, duration);
+    let seq: String = uids.into_iter().map(|v| v.to_string()).join(",");
+    fetch_seq(session, &seq).await
+}
 
-//                 match &result {
-//                     Ok(_) => self.state = ImapListenState::Idle,
-//                     Err(_) => self.state = ImapListenState::Error,
-//                 };
-
-//                 Some(result)
-//             }
-//             ImapListenState::Idle => {
-//                 let result = imap_idle(self);
-
-//                 match &result {
-//                     Ok(_) => self.state = ImapListenState::Idle,
-//                     Err(_) => self.state = ImapListenState::Error,
-//                 };
-
-//                 Some(result)
-//             }
-//             ImapListenState::Error => {
-//                 self.state = ImapListenState::Error;
-//                 None
-//             }
-//         }
-//     }
-// }
-
-// async fn imap_lookback(
-//     session: &mut Session<ImapStream>,
-//     duration: Duration,
-// ) -> Result<Vec<Message>, ImapListenError> {
-//     let from_date = Utc::now() - duration;
-//     let formatted = from_date.format("%d-%b-%Y");
-//     let uids = session.search(format!("UNSEEN SINCE {formatted}")).await?;
-
-//     let seq: String = uids.into_iter().map(|v| v.to_string()).join(",");
-//     fetch_seq(session, &seq)
-// }
-
-pub async fn imap_idle(session: Session<ImapStream>) -> Result<Vec<Message>, ImapListenError> {
+pub async fn imap_idle(
+    listen: &mut ImapListen,
+    mut session: Session<ImapStream>,
+) -> Result<(Session<ImapStream>, Vec<Message>), ImapListenError> {
     let mut idle = session.idle();
     idle.init().await?;
 
     let (idle_wait, interrupt) = idle.wait();
 
     let idle_result = idle_wait.await?;
+
+    let mut result = IdleEvent::Exit;
     match idle_result {
         IdleResponse::ManualInterrupt => {
             idle.done().await?;
@@ -239,9 +211,69 @@ pub async fn imap_idle(session: Session<ImapStream>) -> Result<Vec<Message>, Ima
             return Err(ImapListenError::Exit);
         }
         IdleResponse::NewData(data) => {
-            let s = String::from_utf8(data.borrow_owner().to_vec()).unwrap();
+            println!("New data: {:?}", data.parsed());
+            if let Some(event) = parse_response(data.parsed()) {
+                result = event;
+            }
+        }
+    }
+
+    session = idle.done().await?;
+
+    match result {
+        IdleEvent::Exit => {
             return Err(ImapListenError::Exit);
         }
+        IdleEvent::SizeDecrease => {
+            let mailbox = session.select(&listen.config.mailbox).await?;
+            listen.size = mailbox.exists;
+            return Ok((session, vec![]));
+        }
+        IdleEvent::Exists(new_size) => {
+            let seq = format!("{}:{}", listen.size + 1, new_size);
+            listen.size = new_size;
+            let messages = fetch_seq(&mut session, &seq).await?;
+            return Ok((session, messages));
+        }
+        IdleEvent::Fetch(id) => {
+            let mailbox = session.select(&listen.config.mailbox).await?;
+            listen.size = mailbox.exists;
+            let messages = fetch_seq(&mut session, &id.to_string()).await?;
+            return Ok((session, messages));
+        }
+    };
+}
+
+fn parse_response(response: &Response) -> Option<IdleEvent> {
+    match response {
+        Response::Capabilities(_) => None,
+        Response::Continue { .. } => None,
+        Response::Done { .. } => None,
+        Response::Data { .. } => None,
+        Response::Expunge(_) => Some(IdleEvent::SizeDecrease),
+        Response::Vanished { .. } => Some(IdleEvent::SizeDecrease),
+        Response::Fetch(uid, _) => Some(IdleEvent::Fetch(*uid)),
+        Response::MailboxData(mailbox) => match mailbox {
+            MailboxDatum::Exists(uid) => Some(IdleEvent::Exists(*uid)),
+            MailboxDatum::Flags(_) => None,
+            MailboxDatum::List { .. } => None,
+            MailboxDatum::Search(_) => None,
+            MailboxDatum::Sort(_) => None,
+            MailboxDatum::Status { .. } => None,
+            MailboxDatum::Recent(_) => None,
+            MailboxDatum::MetadataSolicited { .. } => None,
+            MailboxDatum::MetadataUnsolicited { .. } => None,
+            MailboxDatum::GmailLabels(_) => None,
+            MailboxDatum::GmailMsgId(_) => None,
+            _ => None,
+        },
+        Response::Quota(_) => None,
+        Response::QuotaRoot(_) => None,
+        Response::Id(_) => None,
+        Response::Acl(_) => None,
+        Response::ListRights(_) => None,
+        Response::MyRights(_) => None,
+        _ => None,
     }
 }
 
@@ -252,21 +284,25 @@ enum IdleEvent {
     SizeDecrease,
 }
 
-// fn fetch_seq(
-//     session: &mut Session<ImapStream>,
-//     seq: &str,
-// ) -> Result<Vec<Message>, ImapListenError> {
-//     let messages = session.fetch(seq, "(FLAGS INTERNALDATE BODY[] UID)")?;
+async fn fetch_seq(
+    session: &mut Session<ImapStream>,
+    seq: &str,
+) -> Result<Vec<Message>, ImapListenError> {
+    let mut messages = session
+        .fetch(seq, "(FLAGS INTERNALDATE RFC822 BODY[] UID)")
+        .await?;
 
-//     let mut parsed = vec![];
-//     for message in messages.iter() {
-//         let Some(body) = message.body() else {
-//             continue;
-//         };
+    let mut parsed = vec![];
+    while let Some(message) = messages.next().await {
+        let message = message?;
 
-//         let parsed_message = parse_body(body).unwrap();
-//         parsed.push(parsed_message);
-//     }
+        let Some(body) = message.body() else {
+            continue;
+        };
 
-//     Ok(parsed)
-// }
+        let parsed_message = parse_body(body).unwrap();
+        parsed.push(parsed_message);
+    }
+
+    Ok(parsed)
+}
