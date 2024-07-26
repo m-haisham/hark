@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use task::ConnectionHandle;
-use tokio::task::JoinSet;
 use types::Connection;
 
 use crate::task::TaskId;
@@ -12,7 +11,6 @@ pub mod types;
 #[derive(Debug)]
 pub struct ConnectionPool {
     pub current_id: TaskId,
-    pub tasks: JoinSet<anyhow::Result<()>>,
     pub connections: HashMap<TaskId, ConnectionHandle>,
 }
 
@@ -20,7 +18,6 @@ impl ConnectionPool {
     pub fn new() -> Self {
         Self {
             current_id: TaskId::new(0),
-            tasks: JoinSet::new(),
             connections: HashMap::new(),
         }
     }
@@ -43,16 +40,5 @@ impl ConnectionPool {
         tokio::spawn(task::run_connection_task(task));
 
         id
-    }
-
-    pub async fn join_wait(&mut self) {
-        while let Some(res) = self.tasks.join_next().await {
-            let out = res.unwrap();
-
-            match out {
-                Ok(_) => tracing::info!("Listening task completed successfully"),
-                Err(e) => tracing::error!("Listening task failed: {:?}", e),
-            }
-        }
     }
 }

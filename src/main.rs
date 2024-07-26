@@ -1,14 +1,7 @@
-use std::collections::HashMap;
-
 use hark::{
-    connection::{
-        task::{run_connection_task, ConnectionHandle, ConnectionTask},
-        ConnectionPool,
-    },
+    connection::ConnectionPool,
     settings::{self},
-    task::TaskId,
 };
-use tokio::{sync::mpsc, task::JoinSet};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -22,7 +15,6 @@ async fn main() -> anyhow::Result<()> {
     for (name, connection) in settings.connections {
         connection_pool.spawn(name, connection);
     }
-    connection_pool.join_wait().await;
 
     Ok(())
 }
