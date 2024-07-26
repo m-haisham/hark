@@ -1,0 +1,9 @@
+
+[[connections]]
+name = "default"
+host = "localhost"
+port = 3143
+auth = "password"
+username = "haisham"
+password = "password"
+mailbox = "INBOX"
