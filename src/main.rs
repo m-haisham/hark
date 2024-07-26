@@ -1,12 +1,14 @@
-use anyhow::Context;
-use chrono::Duration;
+use std::collections::HashMap;
+
 use hark::{
-    imap::{
-        imap_connect, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
+    connection::{
+        task::{run_connection_task, ConnectionHandle, ConnectionTask},
+        ConnectionPool,
     },
-    settings::{self, ConnectionSetting},
+    settings::{self},
+    task::TaskId,
 };
-use tokio::task::JoinSet;
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -16,72 +18,11 @@ async fn main() -> anyhow::Result<()> {
 
     let settings = settings::get_config(".").expect("Failed to read config");
 
-    let mut tasks = JoinSet::new();
-
-    for (key, connection) in settings.connections {
-        tracing::info!("Spawning task for connection: {}", key);
-        tasks.spawn(listen_to_connection(connection));
+    let mut connection_pool = ConnectionPool::new();
+    for (name, connection) in settings.connections {
+        connection_pool.spawn(name, connection);
     }
-
-    while let Some(res) = tasks.join_next().await {
-        let out = res?;
-
-        match out {
-            Ok(_) => tracing::info!("Listening task completed successfully"),
-            Err(e) => tracing::error!("Listening task failed: {:?}", e),
-        }
-    }
+    connection_pool.join_wait().await;
 
     Ok(())
-}
-
-#[tracing::instrument]
-async fn listen_to_connection(connection: ConnectionSetting) -> anyhow::Result<()> {
-    tracing::trace!(
-        "Connecting to IMAP server: {}:{}",
-        connection.host,
-        connection.port
-    );
-
-    let auth = match connection.auth {
-        settings::ConnectionAuth::Password { password } => ImapAuth::LOGIN {
-            username: connection.username,
-            password,
-        },
-        settings::ConnectionAuth::Xoauth2 { token } => ImapAuth::XOAUTH2 {
-            username: connection.username,
-            access_token: token,
-        },
-    };
-
-    let imap_connection = ImapConnectionConfig {
-        host: connection.host,
-        port: connection.port,
-        auth,
-    };
-
-    let session = imap_connect(&imap_connection)
-        .await
-        .context("Failed to connect to IMAP server")?;
-
-    let listen_config = ImapListenConfig {
-        mailbox: connection.mailbox,
-        lookback_duration: Some(Duration::try_days(30).unwrap()),
-    };
-
-    let (mut session, mut listen) = imap_listen(session, listen_config)
-        .await
-        .context("Failed to start listening to IMAP server")?;
-
-    loop {
-        let (returned_session, messages) = imap_idle(&mut listen, session)
-            .await
-            .context("Failed to idle")?;
-
-        session = returned_session;
-
-        for message in messages {
-            println!("Received message: {:#?}", message);
-        }
-    }
 }
