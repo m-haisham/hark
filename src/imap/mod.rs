@@ -19,12 +19,14 @@ pub type ImapStream = async_native_tls::TlsStream<TcpStream>;
 #[cfg(debug_assertions)]
 pub type ImapStream = TcpStream;
 
+#[derive(Debug)]
 pub struct ImapConnectionConfig {
     pub host: String,
     pub port: u16,
     pub auth: ImapAuth,
 }
 
+#[derive(Debug)]
 pub enum ImapAuth {
     LOGIN {
         username: String,
@@ -36,6 +38,7 @@ pub enum ImapAuth {
     },
 }
 
+#[derive(Debug)]
 pub struct ImapListenConfig {
     pub mailbox: String,
     pub lookback_duration: Option<Duration>,
@@ -65,6 +68,7 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
     }
 }
 
+#[tracing::instrument]
 pub async fn imap_connect(config: &ImapConnectionConfig) -> Result<Session<ImapStream>, ImapError> {
     let stream = TcpStream::connect((config.host.as_str(), config.port))
         .await
@@ -79,6 +83,7 @@ pub async fn imap_connect(config: &ImapConnectionConfig) -> Result<Session<ImapS
     imap_auth(client, &config.auth).await
 }
 
+#[tracing::instrument(skip(client))]
 pub async fn imap_auth(
     mut client: Client<ImapStream>,
     auth: &ImapAuth,
@@ -110,6 +115,7 @@ pub async fn imap_auth(
     }
 }
 
+#[tracing::instrument(skip(client))]
 fn check_auth_capability(
     client: &mut Client<ImapStream>,
     capability_str: &str,
@@ -123,12 +129,14 @@ fn check_auth_capability(
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct ImapListen {
     config: ImapListenConfig,
     size: u32,
     state: ImapListenState,
 }
 
+#[derive(Debug)]
 pub enum ImapListenState {
     Lookback(Duration),
     Idle,
@@ -150,6 +158,7 @@ pub enum ImapListenError {
     Exit,
 }
 
+#[tracing::instrument(skip(session))]
 pub async fn imap_listen(
     mut session: Session<ImapStream>,
     config: ImapListenConfig,
@@ -166,8 +175,6 @@ pub async fn imap_listen(
         Some(duration) => ImapListenState::Lookback(duration.clone()),
         None => ImapListenState::Idle,
     };
-
-    println!("Listening to mailbox: {}", config.mailbox);
 
     Ok((
         session,
@@ -191,6 +198,7 @@ async fn imap_lookback(
     fetch_seq(session, &seq).await
 }
 
+#[tracing::instrument(skip(session))]
 pub async fn imap_idle(
     listen: &mut ImapListen,
     mut session: Session<ImapStream>,
@@ -213,7 +221,7 @@ pub async fn imap_idle(
             return Err(ImapListenError::Exit);
         }
         IdleResponse::NewData(data) => {
-            println!("New data: {:?}", data.parsed());
+            tracing::debug!("New data: {:?}", data);
             if let Some(event) = parse_response(data.parsed()) {
                 result = event;
             }
@@ -286,6 +294,7 @@ enum IdleEvent {
     SizeDecrease,
 }
 
+#[tracing::instrument(skip(session))]
 async fn fetch_seq(
     session: &mut Session<ImapStream>,
     seq: &str,

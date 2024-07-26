@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 pub fn get_config(dir: &str) -> Result<Settings, config::ConfigError> {
@@ -14,12 +16,11 @@ pub fn get_config(dir: &str) -> Result<Settings, config::ConfigError> {
 
 #[derive(Deserialize, Default, Debug, Clone)]
 pub struct Settings {
-    pub connections: Vec<ConnectionSetting>,
+    pub connections: HashMap<String, ConnectionSetting>,
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]
 pub struct ConnectionSetting {
-    pub name: String,
     pub host: String,
     pub port: u16,
     pub username: String,

@@ -1,6 +1,5 @@
 
-[[connections]]
-name = "default"
+[connections.default]
 host = "localhost"
 port = 3143
 auth = "password"

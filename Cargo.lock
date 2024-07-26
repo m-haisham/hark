@@ -548,6 +548,7 @@ name = "hark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel 2.3.1",
  "async-imap",
  "async-native-tls",
  "base64 0.22.1",
