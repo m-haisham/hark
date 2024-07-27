@@ -2,26 +2,22 @@ use anyhow::Context;
 use chrono::Duration;
 use tokio::sync::mpsc;
 
-use crate::{
-    imap::{
-        imap_connect, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
-    },
-    task::TaskId,
+use crate::imap::{
+    imap_connect, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
 };
 
-use super::types::{Connection, ConnectionAuth, ConnectionCommand};
+use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
 
 #[derive(Debug)]
 pub struct ConnectionTask {
-    pub id: TaskId,
-    pub key: String,
+    pub id: ConnectionId,
     pub connection: Connection,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
 }
 
 #[derive(Debug)]
 pub struct ConnectionHandle {
-    pub key: String,
+    pub id: ConnectionId,
     pub sender: mpsc::Sender<ConnectionCommand>,
 }
 

@@ -1,5 +1,14 @@
 use serde::Deserialize;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConnectionId(String);
+
+impl From<String> for ConnectionId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Connection {
     pub host: String,
