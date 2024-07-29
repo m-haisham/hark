@@ -4,11 +4,17 @@ pub mod types;
 use futures::StreamExt;
 use std::{borrow::Cow, string::FromUtf8Error};
 
-use async_imap::{extensions::idle::IdleResponse, Client, Session};
+use async_imap::{
+    extensions::idle::{self, IdleResponse},
+    Client, Session,
+};
 use chrono::{Duration, Utc};
 use imap_proto::{MailboxDatum, Response};
 use itertools::Itertools;
-use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::TcpStream,
+};
 
 use crate::imap::body::parse_body;
 use types::Message;
@@ -206,50 +212,72 @@ pub async fn imap_idle(
     let mut idle = session.idle();
     idle.init().await?;
 
-    let (idle_wait, interrupt) = idle.wait();
+    let (idle_wait, _) = idle.wait();
 
-    let idle_result = idle_wait.await?;
+    let response = idle_wait.await?;
+    let (idle, result) = handle_idle_response(idle, response).await?;
 
-    let mut result = IdleEvent::Exit;
-    match idle_result {
+    session = idle.done().await?;
+    let messages = handle_idle_event(&mut session, listen, result).await?;
+
+    Ok((session, messages))
+}
+
+pub async fn handle_idle_response<T>(
+    idle: idle::Handle<T>,
+    response: IdleResponse,
+) -> Result<(idle::Handle<T>, IdleEvent), ImapListenError>
+where
+    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+{
+    match response {
         IdleResponse::ManualInterrupt => {
             idle.done().await?;
-            return Err(ImapListenError::Exit);
+            Err(ImapListenError::Exit)
         }
         IdleResponse::Timeout => {
             idle.done().await?;
-            return Err(ImapListenError::Exit);
+            Err(ImapListenError::Exit)
         }
         IdleResponse::NewData(data) => {
             tracing::debug!("New data: {:?}", data);
             if let Some(event) = parse_response(data.parsed()) {
-                result = event;
+                Ok((idle, event))
+            } else {
+                Err(ImapListenError::Exit)
             }
         }
     }
+}
 
-    session = idle.done().await?;
-
-    match result {
+pub async fn handle_idle_event<T>(
+    session: &mut Session<T>,
+    listen: &mut ImapListen,
+    event: IdleEvent,
+) -> Result<Vec<Message>, ImapListenError>
+where
+    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+{
+    match event {
         IdleEvent::Exit => {
             return Err(ImapListenError::Exit);
         }
         IdleEvent::SizeDecrease => {
             let mailbox = session.select(&listen.config.mailbox).await?;
             listen.size = mailbox.exists;
-            return Ok((session, vec![]));
+            return Ok(vec![]);
         }
         IdleEvent::Exists(new_size) => {
             let seq = format!("{}:{}", listen.size + 1, new_size);
             listen.size = new_size;
-            let messages = fetch_seq(&mut session, &seq).await?;
-            return Ok((session, messages));
+            let messages = fetch_seq(session, &seq).await?;
+            return Ok(messages);
         }
         IdleEvent::Fetch(id) => {
             let mailbox = session.select(&listen.config.mailbox).await?;
             listen.size = mailbox.exists;
-            let messages = fetch_seq(&mut session, &id.to_string()).await?;
-            return Ok((session, messages));
+            let messages = fetch_seq(session, &id.to_string()).await?;
+            return Ok(messages);
         }
     };
 }
@@ -287,7 +315,7 @@ fn parse_response(response: &Response) -> Option<IdleEvent> {
     }
 }
 
-enum IdleEvent {
+pub enum IdleEvent {
     Exit,
     Exists(u32),
     Fetch(u32),
@@ -295,10 +323,10 @@ enum IdleEvent {
 }
 
 #[tracing::instrument(skip(session))]
-async fn fetch_seq(
-    session: &mut Session<ImapStream>,
-    seq: &str,
-) -> Result<Vec<Message>, ImapListenError> {
+async fn fetch_seq<T>(session: &mut Session<T>, seq: &str) -> Result<Vec<Message>, ImapListenError>
+where
+    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+{
     let mut messages = session
         .fetch(seq, "(FLAGS INTERNALDATE RFC822 BODY[] UID)")
         .await?;

@@ -730,6 +730,7 @@ dependencies = [
  "once_cell",
  "reqwest",
  "serde",
+ "stop-token",
  "thiserror",
  "tokio",
  "tower-http",

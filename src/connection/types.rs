@@ -27,4 +27,9 @@ pub enum ConnectionAuth {
 }
 
 #[derive(Debug)]
-pub enum ConnectionCommand {}
+pub enum ConnectionCommandIn {
+    Stop,
+}
+
+#[derive(Debug)]
+pub enum ConnectionCommandOut {}
