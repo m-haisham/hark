@@ -98,7 +98,7 @@ pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
         // while simultaneously waiting for idle_wait to complete
         let response = tokio::select! {
             response = idle_wait => response,
-            _ = check_and_drop_interrupt(state.clone(), interrupt) => break,
+            _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
         }?;
 
         let (idle, result) = handle_idle_response(idle, response).await?;
@@ -114,15 +114,21 @@ pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn check_and_drop_interrupt(state: Arc<Mutex<ConnectionTaskState>>, interrupt: StopSource) {
-    let stop = {
-        let state = state.lock().await;
-        state.stop
-    };
+async fn drop_interrupt_when_stopped(
+    state: Arc<Mutex<ConnectionTaskState>>,
+    interrupt: StopSource,
+) {
+    loop {
+        let stop = {
+            let state = state.lock().await;
+            state.stop
+        };
 
-    if stop {
-        drop(interrupt);
+        if stop {
+            drop(interrupt);
+            break;
+        }
+
+        tokio::time::sleep(time::Duration::from_secs(10)).await;
     }
-
-    tokio::time::sleep(time::Duration::from_secs(10)).await;
 }
