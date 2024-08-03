@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::connection::types::Connection;
+use crate::connection::types::{Connection, ConnectionId};
 
 pub fn get_config(file: &str) -> Result<Settings, config::ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine current directory");
@@ -19,7 +19,7 @@ pub fn get_config(file: &str) -> Result<Settings, config::ConfigError> {
 pub struct Settings {
     pub server: ServerSettings,
     #[serde(default)]
-    pub connections: HashMap<String, Connection>,
+    pub connections: HashMap<ConnectionId, Connection>,
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]

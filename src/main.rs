@@ -1,7 +1,9 @@
 use hark::{
+    connection::ConnectionPool,
     settings::{self},
     startup,
 };
+use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -11,10 +13,19 @@ async fn main() -> Result<(), std::io::Error> {
 
     let settings = settings::get_config("config.toml").expect("Failed to read config");
 
-    let listener =
-        tokio::net::TcpListener::bind((settings.server.host.as_str(), settings.server.port))
-            .await
-            .expect("Failed to bind to the tcp stream");
+    let mut connection_pool = ConnectionPool::new();
+    for connection in settings.connections.iter() {
+        connection_pool.spawn(connection.0.clone(), connection.1.clone());
+    }
+
+    connection_pool.join_all().await;
+
+    std::process::exit(1);
+
+    let addr = (settings.server.host.as_str(), settings.server.port);
+    let listener = TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind to the tcp stream");
 
     let server = startup::run(listener, settings)
         .await
