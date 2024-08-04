@@ -43,9 +43,9 @@ impl ConnectionPool {
         self.join_handles.insert(id, join_handle);
     }
 
-    pub async fn stop_all(&mut self, id: ConnectionId) {
-        if let Some(handle) = self.handles.get(&id) {
-            let _ = handle.sender.send(ConnectionCommandIn::Stop);
+    pub async fn stop_all(&mut self) {
+        for (_, handle) in self.handles.iter() {
+            let _ = handle.sender.send(ConnectionCommandIn::Stop).await;
         }
     }
 

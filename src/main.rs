@@ -18,6 +18,11 @@ async fn main() -> Result<(), std::io::Error> {
         connection_pool.spawn(connection.0.clone(), connection.1.clone());
     }
 
+    tracing::info!("Sleeping for 20 seconds...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+    tracing::info!("Stopping all connections...");
+    connection_pool.stop_all().await;
     connection_pool.join_all().await;
 
     std::process::exit(1);

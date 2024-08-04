@@ -74,7 +74,11 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
     }
 }
 
-#[tracing::instrument]
+#[tracing::instrument(
+    name = "IMAP Connect",
+    skip(config),
+    fields(host = %config.host.as_str(), port = %config.port)
+)]
 pub async fn imap_connect(config: &ImapConnectionConfig) -> Result<Session<ImapStream>, ImapError> {
     let stream = TcpStream::connect((config.host.as_str(), config.port))
         .await
@@ -89,7 +93,7 @@ pub async fn imap_connect(config: &ImapConnectionConfig) -> Result<Session<ImapS
     imap_auth(client, &config.auth).await
 }
 
-#[tracing::instrument(skip(client))]
+#[tracing::instrument(name = "IMAP Authenticate", skip(client))]
 pub async fn imap_auth(
     mut client: Client<ImapStream>,
     auth: &ImapAuth,

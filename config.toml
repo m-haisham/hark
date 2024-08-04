@@ -6,6 +6,6 @@ port = 3000
 host = "localhost"
 port = 3143
 auth = "password"
-username = "haisham"
+username = "username"
 password = "password"
 mailbox = "INBOX"

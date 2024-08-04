@@ -1,7 +1,15 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectionId(String);
+
+impl Display for ConnectionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "connection.{}", self.0)
+    }
+}
 
 impl From<String> for ConnectionId {
     fn from(s: String) -> Self {
