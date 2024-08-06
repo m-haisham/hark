@@ -35,9 +35,17 @@ pub enum ConnectionAuth {
 }
 
 #[derive(Debug)]
-pub enum ConnectionCommandIn {
+pub enum ConnectionCommand {
     Stop,
 }
 
 #[derive(Debug)]
-pub enum ConnectionCommandOut {}
+pub struct ConnectionEvent {
+    id: ConnectionId,
+    event: ConnectionEventKind,
+}
+
+#[derive(Debug)]
+pub enum ConnectionEventKind {
+    Stopped,
+}

@@ -8,23 +8,23 @@ use tokio::sync::mpsc;
 use tracing::instrument;
 
 use crate::imap::{
-    handle_idle_event, handle_idle_response, imap_connect, imap_idle, imap_listen, ImapAuth,
+    handle_idle_event, handle_idle_response, imap_connect, imap_listen, ImapAuth,
     ImapConnectionConfig, ImapListenConfig,
 };
 
-use super::types::{Connection, ConnectionAuth, ConnectionCommandIn, ConnectionId};
+use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
 
 #[derive(Debug)]
 pub struct ConnectionTask {
     pub id: ConnectionId,
     pub connection: Connection,
-    pub receiver: mpsc::Receiver<ConnectionCommandIn>,
+    pub receiver: mpsc::Receiver<ConnectionCommand>,
 }
 
 #[derive(Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
-    pub sender: mpsc::Sender<ConnectionCommandIn>,
+    pub sender: mpsc::Sender<ConnectionCommand>,
 }
 
 #[derive(Debug)]
@@ -33,16 +33,17 @@ pub struct ConnectionTaskState {
 }
 
 #[instrument(skip(receiver, id, state))]
-async fn listen_receiver(
-    mut receiver: mpsc::Receiver<ConnectionCommandIn>,
+async fn listen_command(
+    mut receiver: mpsc::Receiver<ConnectionCommand>,
     id: ConnectionId,
     state: Arc<Mutex<ConnectionTaskState>>,
 ) {
     while let Some(command) = receiver.recv().await {
         match command {
-            ConnectionCommandIn::Stop => {
+            ConnectionCommand::Stop => {
                 let mut state = state.lock().await;
                 state.stop = true;
+                tracing::info!("Connection task marked for stop");
                 return;
             }
         }
@@ -58,7 +59,7 @@ pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
     } = task;
 
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
-    tokio::spawn(listen_receiver(receiver, id.clone(), state.clone()));
+    tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
     let auth = match connection.auth {
         ConnectionAuth::Password { password } => ImapAuth::LOGIN {
@@ -127,7 +128,7 @@ async fn drop_interrupt_when_stopped(
         };
 
         if stop {
-            tracing::debug!("Dropping interrupt for connection task as it is stopped");
+            tracing::info!("Dropping interrupt for connection task as it is stopped");
             drop(interrupt);
             break;
         } else {

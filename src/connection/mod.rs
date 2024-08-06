@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use task::ConnectionHandle;
 use tracing::instrument;
-use types::{Connection, ConnectionCommandIn, ConnectionId};
+use types::{Connection, ConnectionCommand, ConnectionId};
 
 pub mod task;
 pub mod types;
@@ -45,7 +45,7 @@ impl ConnectionPool {
 
     pub async fn stop_all(&mut self) {
         for (_, handle) in self.handles.iter() {
-            let _ = handle.sender.send(ConnectionCommandIn::Stop).await;
+            let _ = handle.sender.send(ConnectionCommand::Stop).await;
         }
     }
 
