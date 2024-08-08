@@ -10,8 +10,8 @@ pub mod types;
 
 #[derive(Debug)]
 pub struct ConnectionPool {
-    pub pool: HashMap<ConnectionId, ConnectionHandle>,
-    pub handles: HashMap<ConnectionId, JoinHandle<()>>,
+    pool: HashMap<ConnectionId, ConnectionHandle>,
+    handles: HashMap<ConnectionId, JoinHandle<()>>,
 }
 
 impl ConnectionPool {
