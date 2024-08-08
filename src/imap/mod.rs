@@ -1,6 +1,7 @@
 mod body;
 pub mod types;
 
+use anyhow::Context;
 use futures::StreamExt;
 use std::{borrow::Cow, string::FromUtf8Error};
 
@@ -79,18 +80,29 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
     skip(config),
     fields(host = %config.host.as_str(), port = %config.port)
 )]
-pub async fn imap_connect(config: &ImapConnectionConfig) -> Result<Session<ImapStream>, ImapError> {
-    let stream = TcpStream::connect((config.host.as_str(), config.port))
-        .await
-        .unwrap();
+pub async fn imap_connect(config: &ImapConnectionConfig) -> anyhow::Result<Session<ImapStream>> {
+    let addr = (config.host.as_str(), config.port);
+    let stream = TcpStream::connect(addr).await.with_context(|| {
+        format!(
+            "Failed to connect to IMAP server at {}:{}",
+            config.host, config.port
+        )
+    })?;
 
     #[cfg(not(debug_assertions))]
     let stream = async_native_tls::connect(&config.host, stream)
         .await
-        .unwrap();
+        .with_context(|| {
+            format!(
+                "Failed to establish TLS connection to IMAP server at {}:{}",
+                config.host, config.port
+            )
+        })?;
 
     let client = async_imap::Client::new(stream);
-    imap_auth(client, &config.auth).await
+    imap_auth(client, &config.auth)
+        .await
+        .context("Failed to authenticate with IMAP server")
 }
 
 #[tracing::instrument(name = "IMAP Authenticate", skip(client))]

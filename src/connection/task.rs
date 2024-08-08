@@ -51,7 +51,14 @@ async fn listen_command(
 }
 
 #[tracing::instrument(name = "Run Connection Task", skip(task), fields(id = %task.id))]
-pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
+pub async fn run_connection_task(task: ConnectionTask) {
+    let result = run_connection_task_inner(task).await;
+    if let Err(err) = result {
+        tracing::error!("Connection task failed: {:#}", err);
+    }
+}
+
+pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<()> {
     let ConnectionTask {
         id,
         connection,
@@ -59,7 +66,7 @@ pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
     } = task;
 
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
-    tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
+    let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
     let auth = match connection.auth {
         ConnectionAuth::Password { password } => ImapAuth::LOGIN {
@@ -113,6 +120,8 @@ pub async fn run_connection_task(task: ConnectionTask) -> anyhow::Result<()> {
             println!("Received message: {:#?}", message);
         }
     }
+
+    listen_handle.abort();
 
     Ok(())
 }

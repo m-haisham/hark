@@ -1,8 +1,11 @@
-use std::future::IntoFuture;
+use std::{future::IntoFuture, sync::Arc};
 
+use futures::lock::Mutex;
 use hark::{
+    connection::ConnectionPool,
     settings::{get_config, Settings},
     startup::run,
+    state::AppState,
     telemetry::{get_subscriber, init_subscriber},
 };
 use once_cell::sync::Lazy;
@@ -41,7 +44,11 @@ pub async fn spawn_app_with_settings() -> TestApp {
     // During testing the working directory is the package directory.
     let settings = get_config("config.test.toml").expect("Failed to read configuration");
 
-    let server = run(listener, settings.clone())
+    let state = AppState {
+        connection_pool: Arc::new(Mutex::new(ConnectionPool::new())),
+    };
+
+    let server = run(listener, settings.clone(), state)
         .await
         .expect("Failed to bind the server");
 

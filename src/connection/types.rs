@@ -7,7 +7,7 @@ pub struct ConnectionId(String);
 
 impl Display for ConnectionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "connection.{}", self.0)
+        write!(f, "connection:{}", self.0)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use task::ConnectionHandle;
+use tokio::task::JoinHandle;
 use tracing::instrument;
 use types::{Connection, ConnectionCommand, ConnectionId};
 
@@ -11,7 +12,7 @@ pub mod types;
 pub struct ConnectionPool {
     pub connections: HashMap<ConnectionId, Connection>,
     pub handles: HashMap<ConnectionId, ConnectionHandle>,
-    pub join_handles: HashMap<ConnectionId, tokio::task::JoinHandle<Result<(), anyhow::Error>>>,
+    pub join_handles: HashMap<ConnectionId, JoinHandle<()>>,
 }
 
 impl ConnectionPool {
@@ -23,7 +24,7 @@ impl ConnectionPool {
         }
     }
 
-    #[instrument(name = "Spawn Connection", skip(self, connection))]
+    #[instrument(name = "Spawn Connection Task", skip(self, connection))]
     pub fn spawn(&mut self, id: ConnectionId, connection: Connection) {
         let (sender, receiver) = tokio::sync::mpsc::channel(10);
 
