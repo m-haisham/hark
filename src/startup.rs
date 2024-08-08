@@ -1,17 +1,16 @@
+use std::sync::Arc;
+
 use axum::{routing::get, Router};
 use tokio::{net::TcpListener, signal};
 use tower_http::trace::TraceLayer;
 
-use crate::{routes::health_check, settings::Settings, state::AppState, tracing::RequestSpan};
+use crate::{routes::health_check, state::AppState, tracing::RequestSpan};
 
 pub type Server = axum::serve::Serve<axum::Router, axum::Router>;
 
-pub async fn run(
-    listener: TcpListener,
-    settings: Settings,
-    state: AppState,
-) -> Result<Server, std::io::Error> {
-    let (host, port) = (settings.server.host.clone(), settings.server.port);
+pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, std::io::Error> {
+    let host = state.settings.server.host.clone();
+    let port = state.settings.server.port;
 
     let app = Router::new()
         .route("/health-check", get(health_check))

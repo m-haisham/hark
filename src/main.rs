@@ -27,20 +27,19 @@ async fn main() -> Result<(), std::io::Error> {
         .await
         .expect("Failed to bind to the tcp stream");
 
-    let connection_pool = Arc::new(Mutex::new(connection_pool));
+    let state = Arc::new(AppState {
+        connection_pool: Mutex::new(connection_pool),
+        settings,
+    });
 
-    let state = AppState {
-        connection_pool: Arc::clone(&connection_pool),
-    };
-
-    let server = startup::run(listener, settings, state)
+    let server = startup::run(listener, Arc::clone(&state))
         .await
         .expect("Failed to bind the server");
 
     server.with_graceful_shutdown(shutdown_signal()).await?;
 
     tracing::info!("Stopping all connection tasks...");
-    let mut lock = connection_pool.lock().await;
+    let mut lock = state.connection_pool.lock().await;
     lock.stop_all().await;
     lock.join_all().await;
 

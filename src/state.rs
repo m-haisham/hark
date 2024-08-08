@@ -1,10 +1,9 @@
-use std::sync::Arc;
-
 use futures::lock::Mutex;
 
-use crate::connection::ConnectionPool;
+use crate::{connection::ConnectionPool, settings::Settings};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AppState {
-    pub connection_pool: Arc<Mutex<ConnectionPool>>,
+    pub connection_pool: Mutex<ConnectionPool>,
+    pub settings: Settings,
 }
