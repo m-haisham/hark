@@ -1,10 +1,17 @@
 use std::sync::Arc;
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use tokio::{net::TcpListener, signal};
 use tower_http::trace::TraceLayer;
 
-use crate::{routes::health_check, state::AppState, tracing::RequestSpan};
+use crate::{
+    routes::{connection, health_check},
+    state::AppState,
+    tracing::RequestSpan,
+};
 
 pub type Server = axum::serve::Serve<axum::Router, axum::Router>;
 
@@ -14,6 +21,7 @@ pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, 
 
     let app = Router::new()
         .route("/health-check", get(health_check))
+        .route("/connections", post(connection::create_connection))
         .layer(TraceLayer::new_for_http().make_span_with(RequestSpan))
         .with_state(state);
 

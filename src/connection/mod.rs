@@ -10,17 +10,15 @@ pub mod types;
 
 #[derive(Debug)]
 pub struct ConnectionPool {
-    pub connections: HashMap<ConnectionId, Connection>,
-    pub handles: HashMap<ConnectionId, ConnectionHandle>,
-    pub join_handles: HashMap<ConnectionId, JoinHandle<()>>,
+    pub pool: HashMap<ConnectionId, ConnectionHandle>,
+    pub handles: HashMap<ConnectionId, JoinHandle<()>>,
 }
 
 impl ConnectionPool {
     pub fn new() -> Self {
         Self {
-            connections: HashMap::new(),
+            pool: HashMap::new(),
             handles: HashMap::new(),
-            join_handles: HashMap::new(),
         }
     }
 
@@ -30,29 +28,36 @@ impl ConnectionPool {
 
         let task = task::ConnectionTask {
             id: id.clone(),
-            connection,
+            connection: connection.clone(),
             receiver,
         };
 
         let handle = ConnectionHandle {
             id: id.clone(),
+            state: types::ConnectionState::Starting,
+            connection,
             sender,
         };
-        self.handles.insert(id.clone(), handle);
+
+        self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(task::run_connection_task(task));
-        self.join_handles.insert(id, join_handle);
+        self.handles.insert(id, join_handle);
+    }
+
+    pub fn get_connection(&self, id: &ConnectionId) -> Option<&ConnectionHandle> {
+        self.pool.get(id)
     }
 
     pub async fn stop_all(&mut self) {
-        for (_, handle) in self.handles.iter() {
+        for (_, handle) in self.pool.iter() {
             let _ = handle.sender.send(ConnectionCommand::Stop).await;
         }
     }
 
     pub async fn join_all(&mut self) {
         let mut handles = Vec::new();
-        for (_, handle) in self.join_handles.drain() {
+        for (_, handle) in self.handles.drain() {
             handles.push(handle);
         }
 

@@ -3,7 +3,7 @@ use std::{future::IntoFuture, sync::Arc};
 use futures::lock::Mutex;
 use hark::{
     connection::ConnectionPool,
-    settings::{get_config, Settings},
+    settings::get_config,
     startup::run,
     state::AppState,
     telemetry::{get_subscriber, init_subscriber},
@@ -24,7 +24,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 
 pub struct TestApp {
     pub address: String,
-    pub settings: Settings,
+    pub state: Arc<AppState>,
     pub api_client: reqwest::Client,
 }
 
@@ -49,7 +49,7 @@ pub async fn spawn_app_with_settings() -> TestApp {
         settings: settings.clone(),
     });
 
-    let server = run(listener, state)
+    let server = run(listener, Arc::clone(&state))
         .await
         .expect("Failed to bind the server");
 
@@ -62,7 +62,7 @@ pub async fn spawn_app_with_settings() -> TestApp {
 
     TestApp {
         address: format!("http://127.0.0.1:{}", port),
-        settings,
+        state,
         api_client: client,
     }
 }

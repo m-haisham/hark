@@ -3,6 +3,7 @@ use std::{sync::Arc, time};
 use anyhow::Context;
 use chrono::Duration;
 use futures::lock::Mutex;
+use serde::Serialize;
 use stop_token::StopSource;
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -12,7 +13,7 @@ use crate::imap::{
     ImapConnectionConfig, ImapListenConfig,
 };
 
-use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
+use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId, ConnectionState};
 
 #[derive(Debug)]
 pub struct ConnectionTask {
@@ -21,9 +22,12 @@ pub struct ConnectionTask {
     pub receiver: mpsc::Receiver<ConnectionCommand>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
+    pub state: ConnectionState,
+    pub connection: Connection,
+    #[serde(skip)]
     pub sender: mpsc::Sender<ConnectionCommand>,
 }
 
@@ -32,10 +36,10 @@ pub struct ConnectionTaskState {
     pub stop: bool,
 }
 
-#[instrument(skip(receiver, id, state))]
+#[instrument(skip_all)]
 async fn listen_command(
     mut receiver: mpsc::Receiver<ConnectionCommand>,
-    id: ConnectionId,
+    _id: ConnectionId,
     state: Arc<Mutex<ConnectionTaskState>>,
 ) {
     while let Some(command) = receiver.recv().await {
@@ -54,7 +58,7 @@ async fn listen_command(
 pub async fn run_connection_task(task: ConnectionTask) {
     let result = run_connection_task_inner(task).await;
     if let Err(err) = result {
-        tracing::error!("Connection task failed: {:#}", err);
+        tracing::error!("Connection task failed: {:?}", err);
     }
 }
 

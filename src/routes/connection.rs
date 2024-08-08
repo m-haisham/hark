@@ -1,0 +1,49 @@
+use crate::{
+    connection::{
+        task::ConnectionHandle,
+        types::{Connection, ConnectionId},
+    },
+    response::ResponseError,
+    state::ArcAppState,
+};
+use anyhow::{anyhow, Context};
+use axum::{extract::State, Json};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct NewConnection {
+    pub name: String,
+    #[serde(flatten)]
+    pub connection: Connection,
+}
+
+#[tracing::instrument(
+    name = "Create a new connection",
+    skip_all,
+    fields(
+        name = %data.name,
+        host = %data.connection.host,
+        port = %data.connection.port,
+        username = %data.connection.username,
+        mailbox = %data.connection.mailbox,
+    ),
+)]
+pub async fn create_connection(
+    State(state): State<ArcAppState>,
+    Json(data): Json<NewConnection>,
+) -> Result<Json<ConnectionHandle>, ResponseError> {
+    let mut lock = state.connection_pool.lock().await;
+
+    let NewConnection { name, connection } = data;
+    let id = ConnectionId::try_from(name)
+        .map_err(|e| ResponseError::BadRequest(anyhow!(e), e.to_string()))?;
+
+    lock.spawn(id.clone(), connection);
+
+    let connection = lock
+        .get_connection(&id)
+        .cloned()
+        .context("Failed to get connection from pool")?;
+
+    Ok(Json(connection))
+}
