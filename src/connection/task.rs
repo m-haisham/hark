@@ -26,10 +26,10 @@ pub struct ConnectionTaskState {
     pub stop: bool,
 }
 
-#[instrument(skip_all)]
+#[instrument(name = "Listen for commands to connection", skip_all, fields(id = %id))]
 async fn listen_command(
     mut receiver: mpsc::Receiver<ConnectionCommand>,
-    _id: ConnectionId,
+    id: ConnectionId,
     state: Arc<Mutex<ConnectionTaskState>>,
 ) {
     while let Some(command) = receiver.recv().await {
@@ -44,7 +44,7 @@ async fn listen_command(
     }
 }
 
-#[tracing::instrument(name = "Run Connection Task", skip(task), fields(id = %task.id))]
+#[tracing::instrument(name = "Connection Task", skip(task), fields(id = %task.id))]
 pub async fn run_connection_task(task: ConnectionTask) {
     let result = run_connection_task_inner(task).await;
     if let Err(err) = result {

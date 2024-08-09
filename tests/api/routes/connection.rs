@@ -13,10 +13,30 @@ async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serd
 
     assert_eq!(response.status().as_u16(), 200);
 
-    response
+    let mut connection = response
         .json::<serde_json::Value>()
         .await
-        .expect("Failed to parse response.")
+        .expect("Failed to parse response.");
+
+    connection["connection"].take()
+}
+
+async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
+    let response = app
+        .api_client
+        .get(&format!("{}/connections/{}", app.address, id))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 200);
+
+    let mut connection = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse response.");
+
+    connection["connection"].take()
 }
 
 fn new_connection(name: &str) -> serde_json::Value {
@@ -28,6 +48,17 @@ fn new_connection(name: &str) -> serde_json::Value {
         "auth": "password",
         "password": "password",
         "mailbox": "INBOX",
+    })
+}
+
+fn update_connection() -> serde_json::Value {
+    serde_json::json!({
+        "host": "localhost",
+        "port": 3143,
+        "username": "username",
+        "auth": "password",
+        "password": "password",
+        "mailbox": "TRASH",
     })
 }
 
@@ -116,22 +147,48 @@ async fn get_connection_returns_200_for_existing_connection() {
 
     // Act
     let connection = create_connection(&app, new_connection("test")).await;
+    let existing_connection = get_connection(&app, "test").await;
+
+    // Assert
+    assert_eq!(existing_connection, connection);
+}
+
+#[tokio::test]
+async fn update_connection_returns_404_for_missing_connection() {
+    let app = spawn_app().await;
 
     let response = app
         .api_client
-        .get(&format!("{}/connections/test", app.address))
+        .put(&format!("{}/connections/missing", app.address))
+        .json(&update_connection())
         .send()
         .await
         .expect("Failed to execute request.");
 
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn update_connection_changes_the_existing_connection() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    create_connection(&app, new_connection("test")).await;
+
+    let response = app
+        .api_client
+        .put(&format!("{}/connections/test", app.address))
+        .json(&update_connection())
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    let updated_connection = get_connection(&app, "test").await;
+
     // Assert
     assert_eq!(response.status().as_u16(), 200);
-    let data = response
-        .json::<serde_json::Value>()
-        .await
-        .expect("Failed to parse response.");
-
-    assert_eq!(data, connection);
+    assert_eq!(updated_connection["mailbox"], "TRASH");
 }
 
 #[tokio::test]

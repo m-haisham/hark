@@ -74,11 +74,47 @@ pub async fn get_connection(
     }
 }
 
+#[tracing::instrument(
+    name = "Update a connection",
+    skip_all,
+    fields(
+        id = %id,
+        host = %data.host,
+        port = %data.port,
+        username = %data.username,
+        mailbox = %data.mailbox,
+    ),
+)]
+pub async fn update_connection(
+    State(state): State<ArcAppState>,
+    Path(id): Path<ConnectionId>,
+    Json(data): Json<Connection>,
+) -> Result<Json<ConnectionHandle>, ResponseError> {
+    delete_connection_inner(&state, &id).await?;
+
+    let mut lock = state.connection_pool.lock().await;
+
+    lock.spawn(id.clone(), data);
+    let connection = lock
+        .get_connection(&id)
+        .cloned()
+        .context("Failed to get connection from pool")?;
+
+    Ok(Json(connection))
+}
+
 #[tracing::instrument(name = "Delete a connection", skip_all, fields(id = %id))]
 pub async fn delete_connection(
     State(state): State<ArcAppState>,
     Path(id): Path<ConnectionId>,
 ) -> Result<Json<ConnectionHandle>, ResponseError> {
+    Ok(Json(delete_connection_inner(&state, &id).await?))
+}
+
+async fn delete_connection_inner(
+    state: &ArcAppState,
+    id: &ConnectionId,
+) -> Result<ConnectionHandle, ResponseError> {
     let mut lock = state.connection_pool.lock().await;
 
     let Some(mut connection) = lock.remove_connection(&id) else {
@@ -99,5 +135,5 @@ pub async fn delete_connection(
         }
     }
 
-    Ok(Json(connection))
+    Ok(connection)
 }
