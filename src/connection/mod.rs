@@ -45,6 +45,10 @@ impl ConnectionPool {
         self.handles.insert(id, join_handle);
     }
 
+    pub fn list_connections(&self) -> impl Iterator<Item = (&ConnectionId, &ConnectionHandle)> {
+        self.pool.iter()
+    }
+
     pub fn get_connection(&self, id: &ConnectionId) -> Option<&ConnectionHandle> {
         self.pool.get(id)
     }

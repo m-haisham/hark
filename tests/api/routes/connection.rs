@@ -39,3 +39,45 @@ async fn create_connection_returns_400_for_invalid_name() {
         assert_eq!(response.status().as_u16(), 400, "name: {}", name);
     }
 }
+
+#[tokio::test]
+async fn create_connection_returns_200_for_valid_data() {
+    // Arrange
+    let app = spawn_app().await;
+
+    let connection = serde_json::json!({
+        "name": "test",
+        "host": "localhost",
+        "port": 5432,
+        "username": "postgres",
+        "auth": "password",
+        "password": "password",
+        "mailbox": "INBOX",
+    });
+
+    // Act
+    let response = app
+        .api_client
+        .post(&format!("{}/connections", app.address))
+        .json(&connection)
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn list_connections_returns_200() {
+    let app = spawn_app().await;
+
+    let response = app
+        .api_client
+        .get(&format!("{}/connections", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 200);
+}

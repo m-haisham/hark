@@ -47,3 +47,14 @@ pub async fn create_connection(
 
     Ok(Json(connection))
 }
+
+#[tracing::instrument(name = "List all connections", skip_all)]
+pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<ConnectionHandle>> {
+    let lock = state.connection_pool.lock().await;
+    let connections = lock
+        .list_connections()
+        .map(|(_, connection)| connection.clone())
+        .collect();
+
+    Json(connections)
+}

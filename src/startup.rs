@@ -21,6 +21,7 @@ pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, 
 
     let app = Router::new()
         .route("/health-check", get(health_check))
+        .route("/connections", get(connection::list_connections))
         .route("/connections", post(connection::create_connection))
         .layer(TraceLayer::new_for_http().make_span_with(RequestSpan))
         .with_state(state);
