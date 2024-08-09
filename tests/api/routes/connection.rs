@@ -19,22 +19,22 @@ async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serd
         .expect("Failed to parse response.")
 }
 
+fn new_connection(name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "host": "localhost",
+        "port": 3143,
+        "username": "username",
+        "auth": "password",
+        "password": "password",
+        "mailbox": "INBOX",
+    })
+}
+
 #[tokio::test]
 async fn create_connection_returns_400_for_invalid_name() {
     // Arrange
     let app = spawn_app().await;
-
-    fn new_connection_with_name(name: &str) -> serde_json::Value {
-        serde_json::json!({
-            "name": name,
-            "host": "localhost",
-            "port": 3143,
-            "username": "username",
-            "auth": "password",
-            "password": "password",
-            "mailbox": "INBOX",
-        })
-    }
 
     let test_cases = vec!["", " ", "1a", "a b"]
         .into_iter()
@@ -47,7 +47,7 @@ async fn create_connection_returns_400_for_invalid_name() {
         let response = app
             .api_client
             .post(&format!("{}/connections", app.address))
-            .json(&new_connection_with_name(&name))
+            .json(&new_connection(&name))
             .send()
             .await
             .expect("Failed to execute request.");
@@ -62,21 +62,11 @@ async fn create_connection_returns_connection_for_valid_data() {
     // Arrange
     let app = spawn_app().await;
 
-    let connection = serde_json::json!({
-        "name": "test",
-        "host": "localhost",
-        "port": 5432,
-        "username": "postgres",
-        "auth": "password",
-        "password": "password",
-        "mailbox": "INBOX",
-    });
-
     // Act
     let response = app
         .api_client
         .post(&format!("{}/connections", app.address))
-        .json(&connection)
+        .json(&new_connection("test"))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -125,19 +115,7 @@ async fn get_connection_returns_200_for_existing_connection() {
     let app = spawn_app().await;
 
     // Act
-    let connection = create_connection(
-        &app,
-        serde_json::json!({
-            "name": "test",
-            "host": "localhost",
-            "port": 5432,
-            "username": "postgres",
-            "auth": "password",
-            "password": "password",
-            "mailbox": "INBOX",
-        }),
-    )
-    .await;
+    let connection = create_connection(&app, new_connection("test")).await;
 
     let response = app
         .api_client
@@ -176,19 +154,7 @@ async fn delete_connection_returns_200_for_existing_connection() {
     let app = spawn_app().await;
 
     // Act
-    create_connection(
-        &app,
-        serde_json::json!({
-            "name": "test",
-            "host": "localhost",
-            "port": 5432,
-            "username": "postgres",
-            "auth": "password",
-            "password": "password",
-            "mailbox": "INBOX",
-        }),
-    )
-    .await;
+    create_connection(&app, new_connection("test")).await;
 
     let response = app
         .api_client
