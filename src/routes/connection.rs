@@ -7,7 +7,10 @@ use crate::{
     state::ArcAppState,
 };
 use anyhow::{anyhow, Context};
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -57,4 +60,19 @@ pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<Conn
         .collect();
 
     Json(connections)
+}
+
+#[tracing::instrument(name = "Get a connection", skip_all, fields(id = %id))]
+pub async fn get_connection(
+    State(state): State<ArcAppState>,
+    Path(id): Path<ConnectionId>,
+) -> Result<Json<ConnectionHandle>, ResponseError> {
+    let lock = state.connection_pool.lock().await;
+    match lock.get_connection(&id) {
+        Some(connection) => Ok(Json(connection.clone())),
+        None => Err(ResponseError::NotFound(
+            anyhow!("Connection not found"),
+            id.to_string(),
+        )),
+    }
 }

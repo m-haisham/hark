@@ -7,6 +7,9 @@ pub enum ResponseError {
     #[error("{1}")]
     BadRequest(#[source] anyhow::Error, String),
 
+    #[error("{1}")]
+    NotFound(#[source] anyhow::Error, String),
+
     #[error("Something went wrong.")]
     ServerError(#[from] anyhow::Error),
 }
@@ -22,6 +25,10 @@ impl IntoResponse for ResponseError {
             ResponseError::BadRequest(e, message) => {
                 tracing::error!("{:?}", e);
                 (StatusCode::BAD_REQUEST, Json(MessageBody { message })).into_response()
+            }
+            ResponseError::NotFound(e, message) => {
+                tracing::error!("{:?}", e);
+                (StatusCode::NOT_FOUND, Json(MessageBody { message })).into_response()
             }
             ResponseError::ServerError(e) => {
                 tracing::error!("{:?}", e);

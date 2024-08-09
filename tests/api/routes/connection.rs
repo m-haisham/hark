@@ -1,6 +1,21 @@
 use itertools::Itertools;
 
-use crate::helpers::spawn_app;
+use crate::helpers::{spawn_app, TestApp};
+
+async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serde_json::Value {
+    let response = app
+        .api_client
+        .post(&format!("{}/connections", app.address))
+        .json(&connection)
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    response
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse response.")
+}
 
 #[tokio::test]
 async fn create_connection_returns_400_for_invalid_name() {
@@ -41,7 +56,7 @@ async fn create_connection_returns_400_for_invalid_name() {
 }
 
 #[tokio::test]
-async fn create_connection_returns_200_for_valid_data() {
+async fn create_connection_returns_connection_for_valid_data() {
     // Arrange
     let app = spawn_app().await;
 
@@ -66,6 +81,12 @@ async fn create_connection_returns_200_for_valid_data() {
 
     // Assert
     assert_eq!(response.status().as_u16(), 200);
+
+    let data = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse response.");
+    assert_eq!(data["id"], "test");
 }
 
 #[tokio::test]
@@ -80,4 +101,55 @@ async fn list_connections_returns_200() {
         .expect("Failed to execute request.");
 
     assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn get_connection_returns_404_for_missing_connection() {
+    let app = spawn_app().await;
+
+    let response = app
+        .api_client
+        .get(&format!("{}/connections/missing", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn get_connection_returns_200_for_existing_connection() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let connection = create_connection(
+        &app,
+        serde_json::json!({
+            "name": "test",
+            "host": "localhost",
+            "port": 5432,
+            "username": "postgres",
+            "auth": "password",
+            "password": "password",
+            "mailbox": "INBOX",
+        }),
+    )
+    .await;
+
+    let response = app
+        .api_client
+        .get(&format!("{}/connections/test", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 200);
+    let data = response
+        .json::<serde_json::Value>()
+        .await
+        .expect("Failed to parse response.");
+
+    assert_eq!(data, connection);
 }
