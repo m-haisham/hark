@@ -1,6 +1,9 @@
-use std::fmt::Display;
+mod handle;
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+
+pub use handle::ConnectionHandle;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectionId(String);

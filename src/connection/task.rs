@@ -3,7 +3,6 @@ use std::{sync::Arc, time};
 use anyhow::Context;
 use chrono::Duration;
 use futures::lock::Mutex;
-use serde::Serialize;
 use stop_token::StopSource;
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -13,22 +12,13 @@ use crate::imap::{
     ImapConnectionConfig, ImapListenConfig,
 };
 
-use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId, ConnectionState};
+use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
 
 #[derive(Debug)]
 pub struct ConnectionTask {
     pub id: ConnectionId,
     pub connection: Connection,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ConnectionHandle {
-    pub id: ConnectionId,
-    pub state: ConnectionState,
-    pub connection: Connection,
-    #[serde(skip)]
-    pub sender: mpsc::Sender<ConnectionCommand>,
 }
 
 #[derive(Debug)]

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use task::ConnectionHandle;
 use tokio::task::JoinHandle;
 use tracing::instrument;
-use types::{Connection, ConnectionCommand, ConnectionId};
+use types::{Connection, ConnectionCommand, ConnectionHandle, ConnectionId};
 
 pub mod task;
 pub mod types;
@@ -32,13 +31,7 @@ impl ConnectionPool {
             receiver,
         };
 
-        let handle = ConnectionHandle {
-            id: id.clone(),
-            state: types::ConnectionState::Starting,
-            connection,
-            sender,
-        };
-
+        let handle = ConnectionHandle::new(id.clone(), connection, sender);
         self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(task::run_connection_task(task));
@@ -53,9 +46,13 @@ impl ConnectionPool {
         self.pool.get(id)
     }
 
+    pub fn remove_connection(&mut self, id: &ConnectionId) -> Option<ConnectionHandle> {
+        self.pool.remove(id)
+    }
+
     pub async fn stop_all(&mut self) {
         for (_, handle) in self.pool.iter() {
-            let _ = handle.sender.send(ConnectionCommand::Stop).await;
+            let _ = handle.send(ConnectionCommand::Stop).await;
         }
     }
 
@@ -68,5 +65,9 @@ impl ConnectionPool {
         for handle in handles {
             let _ = handle.await;
         }
+    }
+
+    pub async fn remove_join(&mut self, id: &ConnectionId) -> Option<JoinHandle<()>> {
+        self.handles.remove(id)
     }
 }

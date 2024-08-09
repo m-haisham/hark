@@ -11,6 +11,8 @@ async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serd
         .await
         .expect("Failed to execute request.");
 
+    assert_eq!(response.status().as_u16(), 200);
+
     response
         .json::<serde_json::Value>()
         .await
@@ -26,8 +28,8 @@ async fn create_connection_returns_400_for_invalid_name() {
         serde_json::json!({
             "name": name,
             "host": "localhost",
-            "port": 5432,
-            "username": "postgres",
+            "port": 3143,
+            "username": "username",
             "auth": "password",
             "password": "password",
             "mailbox": "INBOX",
@@ -152,4 +154,49 @@ async fn get_connection_returns_200_for_existing_connection() {
         .expect("Failed to parse response.");
 
     assert_eq!(data, connection);
+}
+
+#[tokio::test]
+async fn delete_connection_returns_404_for_missing_connection() {
+    let app = spawn_app().await;
+
+    let response = app
+        .api_client
+        .delete(&format!("{}/connections/missing", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn delete_connection_returns_200_for_existing_connection() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    create_connection(
+        &app,
+        serde_json::json!({
+            "name": "test",
+            "host": "localhost",
+            "port": 5432,
+            "username": "postgres",
+            "auth": "password",
+            "password": "password",
+            "mailbox": "INBOX",
+        }),
+    )
+    .await;
+
+    let response = app
+        .api_client
+        .delete(&format!("{}/connections/test", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 200);
 }
