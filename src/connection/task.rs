@@ -17,7 +17,8 @@ use tokio::{
 use tracing::instrument;
 
 use crate::{
-    connection::types::OAuth2,
+    background::command::BackgroundCommand,
+    connection::types::{ConnectionEvent, ConnectionEventKind, OAuth2},
     imap::{
         handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
         ImapAuth, ImapConnectionConfig, ImapListenConfig,
@@ -31,6 +32,7 @@ pub struct ConnectionTask {
     pub id: ConnectionId,
     pub connection: Connection,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
+    pub background: async_channel::Sender<BackgroundCommand>,
 }
 
 #[derive(Debug)]
@@ -69,6 +71,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         id,
         mut connection,
         receiver,
+        background,
     } = task;
 
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
@@ -103,6 +106,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             .await
             .context("Failed to connect to IMAP server")?;
 
+        background
+            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                id: id.clone(),
+                event: ConnectionEventKind::Started,
+            }))
+            .await?;
+
         idle(connection, session, state).await?;
     } else {
         tracing::info!("Connecting to IMAP server without TLS");
@@ -110,6 +120,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         let session = imap_connect_tcp(&imap_connection)
             .await
             .context("Failed to connect to IMAP server")?;
+
+        background
+            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                id: id.clone(),
+                event: ConnectionEventKind::Started,
+            }))
+            .await?;
 
         idle(connection, session, state).await?;
     }

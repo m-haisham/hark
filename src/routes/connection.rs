@@ -32,15 +32,16 @@ pub async fn create_connection(
     State(state): State<ArcAppState>,
     Json(data): Json<NewConnection>,
 ) -> Result<Json<ConnectionHandle>, ResponseError> {
-    let mut lock = state.connection_pool.lock().await;
+    let mut connection_lock = state.connection_pool.lock().await;
+    let background_lock = state.background_pool.lock().await;
 
     let NewConnection { name, connection } = data;
     let id = ConnectionId::try_from(name)
         .map_err(|e| ResponseError::BadRequest(anyhow!(e), e.to_string()))?;
 
-    lock.spawn(id.clone(), connection);
+    connection_lock.spawn(id.clone(), connection, background_lock.sender());
 
-    let connection = lock
+    let connection = connection_lock
         .get_connection(&id)
         .cloned()
         .context("Failed to get connection from pool")?;
@@ -92,10 +93,11 @@ pub async fn update_connection(
 ) -> Result<Json<ConnectionHandle>, ResponseError> {
     delete_connection_inner(&state, &id).await?;
 
-    let mut lock = state.connection_pool.lock().await;
+    let mut connection_lock = state.connection_pool.lock().await;
+    let background_lock = state.background_pool.lock().await;
 
-    lock.spawn(id.clone(), data);
-    let connection = lock
+    connection_lock.spawn(id.clone(), data, background_lock.sender());
+    let connection = connection_lock
         .get_connection(&id)
         .cloned()
         .context("Failed to get connection from pool")?;

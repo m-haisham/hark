@@ -119,11 +119,12 @@ pub enum ConnectionCommand {
 
 #[derive(Debug)]
 pub struct ConnectionEvent {
-    id: ConnectionId,
-    event: ConnectionEventKind,
+    pub id: ConnectionId,
+    pub event: ConnectionEventKind,
 }
 
 #[derive(Debug)]
 pub enum ConnectionEventKind {
+    Started,
     Stopped,
 }

@@ -2,6 +2,7 @@ use std::{future::IntoFuture, sync::Arc};
 
 use futures::lock::Mutex;
 use hark::{
+    background::BackgroundPool,
     connection::ConnectionPool,
     settings::get_config,
     startup::run,
@@ -46,6 +47,7 @@ pub async fn spawn_app_with_settings() -> TestApp {
 
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(ConnectionPool::new()),
+        background_pool: Mutex::new(BackgroundPool::new()),
         settings: settings.clone(),
     });
 

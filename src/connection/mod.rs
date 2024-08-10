@@ -4,6 +4,8 @@ use tokio::task::JoinHandle;
 use tracing::instrument;
 use types::{Connection, ConnectionCommand, ConnectionHandle, ConnectionId};
 
+use crate::background::{self, command::BackgroundCommand};
+
 pub mod task;
 pub mod types;
 
@@ -22,13 +24,19 @@ impl ConnectionPool {
     }
 
     #[instrument(name = "Spawn Connection Task", skip(self, connection))]
-    pub fn spawn(&mut self, id: ConnectionId, connection: Connection) {
+    pub fn spawn(
+        &mut self,
+        id: ConnectionId,
+        connection: Connection,
+        background: async_channel::Sender<BackgroundCommand>,
+    ) {
         let (sender, receiver) = tokio::sync::mpsc::channel(10);
 
         let task = task::ConnectionTask {
             id: id.clone(),
             connection: connection.clone(),
             receiver,
+            background,
         };
 
         let handle = ConnectionHandle::new(id.clone(), connection, sender);
@@ -44,6 +52,10 @@ impl ConnectionPool {
 
     pub fn get_connection(&self, id: &ConnectionId) -> Option<&ConnectionHandle> {
         self.pool.get(id)
+    }
+
+    pub fn get_connection_mut(&mut self, id: &ConnectionId) -> Option<&mut ConnectionHandle> {
+        self.pool.get_mut(id)
     }
 
     pub fn remove_connection(&mut self, id: &ConnectionId) -> Option<ConnectionHandle> {
