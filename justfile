@@ -1,5 +1,5 @@
 run-example:
-    HOST=localhost PORT=3143 \
+    HOST=localhost PORT=3993 \
     USER=haisham PASS=password cargo run --example imap-listen
 
 greenmail:

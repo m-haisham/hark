@@ -18,7 +18,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::imap::body::parse_body;
+use crate::{connection::types::ImapFlavour, imap::body::parse_body};
 use types::Message;
 
 #[derive(Debug)]
@@ -26,6 +26,7 @@ pub struct ImapConnectionConfig {
     pub host: String,
     pub port: u16,
     pub auth: ImapAuth,
+    pub flavour: Option<ImapFlavour>,
 }
 
 #[derive(Debug)]
@@ -95,7 +96,8 @@ pub async fn imap_connect_tls(
             )
         })?;
 
-    let client = async_imap::Client::new(stream);
+    let client = create_client(config, stream).await?;
+
     imap_auth(client, &config.auth)
         .await
         .context("Failed to authenticate with IMAP server")
@@ -115,10 +117,39 @@ pub async fn imap_connect_tcp(config: &ImapConnectionConfig) -> anyhow::Result<S
         )
     })?;
 
-    let client = async_imap::Client::new(stream);
+    let client = create_client(config, stream).await?;
+
     imap_auth(client, &config.auth)
         .await
         .context("Failed to authenticate with IMAP server")
+}
+
+#[tracing::instrument(
+    name = "IMAP Create Client",
+    skip_all,
+    fields(
+        host = %config.host.as_str(),
+        port = %config.port,
+        flavour = ?config.flavour
+    )
+)]
+async fn create_client<T>(config: &ImapConnectionConfig, stream: T) -> anyhow::Result<Client<T>>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
+    let mut client = async_imap::Client::new(stream);
+
+    if let Some(ImapFlavour::Gmail) = config.flavour {
+        tracing::info!("Gmail IMAP flavour detected, receiving greeting");
+
+        client
+            .read_response()
+            .await
+            .context("Expected greeting response from google IMAP server")?
+            .context("Failed to read response")?;
+    }
+
+    Ok(client)
 }
 
 #[tracing::instrument(name = "IMAP Authenticate", skip(client))]

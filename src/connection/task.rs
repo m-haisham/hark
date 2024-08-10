@@ -84,6 +84,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         host: connection.host.clone(),
         port: connection.port,
         auth,
+        flavour: connection.flavour,
     };
 
     if connection.tls {

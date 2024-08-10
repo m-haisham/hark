@@ -54,6 +54,8 @@ pub struct Connection {
     pub auth: ConnectionAuth,
     pub tls: bool,
     pub mailbox: String,
+    #[serde(default)]
+    pub flavour: Option<ImapFlavour>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -86,6 +88,20 @@ pub struct OAuth2Config {
     pub client_secret: Secret<String>,
     pub token_uri: String,
     pub scope: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum ImapFlavour {
+    Gmail,
+}
+
+impl Display for ImapFlavour {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImapFlavour::Gmail => write!(f, "google"),
+        }
+    }
 }
 
 #[derive(Serialize, Debug, Clone)]
