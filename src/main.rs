@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
 
     let settings = settings::get_config("config.toml").expect("Failed to read config");
 
-    let mut background_pool = BackgroundPool::new();
+    let background_pool = BackgroundPool::new();
 
     let mut connection_pool = ConnectionPool::new();
     for (id, connection) in settings.connections.iter() {
@@ -47,15 +47,19 @@ async fn main() -> anyhow::Result<()> {
 
     server.with_graceful_shutdown(shutdown_signal()).await?;
 
-    tracing::info!("Stopping all connection tasks...");
-    let mut connection_lock = state.connection_pool.lock().await;
-    connection_lock.stop_all().await;
-    connection_lock.join_all().await;
+    {
+        tracing::info!("Stopping all connection tasks...");
+        let mut connection_lock = state.connection_pool.lock().await;
+        connection_lock.stop_all().await;
+        connection_lock.join_all().await;
+    }
 
-    tracing::info!("Shutting down background workers...");
-    let mut background_lock = state.background_pool.lock().await;
-    background_lock.stop_all().await?;
-    background_lock.join_all().await?;
+    {
+        tracing::info!("Shutting down background workers...");
+        let mut background_lock = state.background_pool.lock().await;
+        background_lock.stop_all().await?;
+        background_lock.join_all().await?;
+    }
 
     Ok(())
 }

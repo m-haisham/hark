@@ -51,7 +51,7 @@ async fn listen_command(
             ConnectionCommand::Stop => {
                 let mut state = state.lock().await;
                 state.stop = true;
-                tracing::info!("Connection task marked for stop");
+                tracing::info!("Connection received stop command");
                 return;
             }
         }
@@ -132,6 +132,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     }
 
     listen_handle.abort();
+
+    background
+        .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+            id,
+            event: ConnectionEventKind::Stopped,
+        }))
+        .await?;
 
     Ok(())
 }

@@ -43,6 +43,8 @@ impl BackgroundPool {
     }
 
     pub async fn stop_all(&mut self) -> anyhow::Result<()> {
+        tracing::debug!("Sending stop command to all background workers");
+
         for _ in 0..self.workers.len() {
             self.sender
                 .send(command::BackgroundCommand::Stop)

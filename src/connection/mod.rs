@@ -4,7 +4,7 @@ use tokio::task::JoinHandle;
 use tracing::instrument;
 use types::{Connection, ConnectionCommand, ConnectionHandle, ConnectionId};
 
-use crate::background::{self, command::BackgroundCommand};
+use crate::background::command::BackgroundCommand;
 
 pub mod task;
 pub mod types;
@@ -30,7 +30,7 @@ impl ConnectionPool {
         connection: Connection,
         background: async_channel::Sender<BackgroundCommand>,
     ) {
-        let (sender, receiver) = tokio::sync::mpsc::channel(10);
+        let (sender, receiver) = tokio::sync::mpsc::channel(20);
 
         let task = task::ConnectionTask {
             id: id.clone(),
