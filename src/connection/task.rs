@@ -76,10 +76,9 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
 
     if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
         let OAuth2 {
-            access_token,
-            expires_at,
             refresh_token,
             config,
+            ..
         } = oauth2;
 
         tracing::info!("Refreshing access token for connection");
