@@ -16,9 +16,12 @@ use tokio::{
 };
 use tracing::instrument;
 
-use crate::imap::{
-    handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
-    ImapAuth, ImapConnectionConfig, ImapListenConfig,
+use crate::{
+    connection::types::OAuth2,
+    imap::{
+        handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
+        ImapAuth, ImapConnectionConfig, ImapListenConfig,
+    },
 };
 
 use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
@@ -71,12 +74,14 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
-    if let ConnectionAuth::Xoauth2 {
-        refresh_token,
-        config,
-        ..
-    } = connection.auth
-    {
+    if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
+        let OAuth2 {
+            access_token,
+            expires_at,
+            refresh_token,
+            config,
+        } = oauth2;
+
         tracing::info!("Refreshing access token for connection");
 
         let client: oauth2::basic::BasicClient = oauth2::Client::new(
@@ -102,12 +107,12 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in)?
             - chrono::Duration::seconds(60); // subtract 60 seconds to be safe
 
-        connection.auth = ConnectionAuth::Xoauth2 {
+        connection.auth = ConnectionAuth::OAuth2(OAuth2 {
             access_token: response.access_token().clone(),
             expires_at: Some(expires_at),
             refresh_token,
             config,
-        };
+        });
 
         tracing::info!("Access token refreshed successfully");
     }
@@ -117,11 +122,9 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             username: connection.username.clone(),
             password: password.clone(),
         },
-        ConnectionAuth::Xoauth2 {
-            ref access_token, ..
-        } => ImapAuth::XOAUTH2 {
+        ConnectionAuth::OAuth2(ref oauth2) => ImapAuth::XOAUTH2 {
             username: connection.username.clone(),
-            access_token: access_token.clone(),
+            access_token: oauth2.access_token.clone(),
         },
     };
 

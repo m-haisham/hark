@@ -66,14 +66,17 @@ pub enum ConnectionAuth {
         #[serde(skip_serializing)]
         password: Secret<String>,
     },
-    Xoauth2 {
-        #[serde(skip_serializing)]
-        access_token: AccessToken,
-        expires_at: Option<DateTime<Utc>>,
-        #[serde(skip_serializing)]
-        refresh_token: RefreshToken,
-        config: OAuth2Config,
-    },
+    OAuth2(OAuth2),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OAuth2 {
+    #[serde(skip_serializing)]
+    pub access_token: AccessToken,
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing)]
+    pub refresh_token: RefreshToken,
+    pub config: OAuth2Config,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
