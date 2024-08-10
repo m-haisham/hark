@@ -70,13 +70,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     let auth = match connection.auth {
         ConnectionAuth::Password { ref password } => ImapAuth::LOGIN {
             username: connection.username.clone(),
-            password: password.expose_secret().to_string(),
+            password: password.clone(),
         },
         ConnectionAuth::Xoauth2 {
             ref access_token, ..
         } => ImapAuth::XOAUTH2 {
             username: connection.username.clone(),
-            access_token: access_token.secret.expose_secret().to_string(),
+            access_token: access_token.secret.clone(),
         },
     };
 

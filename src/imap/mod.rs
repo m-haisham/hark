@@ -4,6 +4,7 @@ pub mod types;
 use anyhow::Context;
 use async_native_tls::TlsStream;
 use futures::StreamExt;
+use secrecy::{ExposeSecret, Secret};
 use std::{borrow::Cow, fmt::Debug, string::FromUtf8Error};
 
 use async_imap::{
@@ -33,11 +34,11 @@ pub struct ImapConnectionConfig {
 pub enum ImapAuth {
     LOGIN {
         username: String,
-        password: String,
+        password: Secret<String>,
     },
     XOAUTH2 {
         username: String,
-        access_token: String,
+        access_token: Secret<String>,
     },
 }
 
@@ -54,6 +55,9 @@ pub enum ImapError {
 
     #[error("Imap server does not define the capability: {0}")]
     LackingCapability(String),
+
+    #[error("{0}")]
+    AuthFailed(#[source] async_imap::error::Error),
 }
 
 struct XOAuth2Authenticator<'a> {
@@ -145,7 +149,7 @@ where
         client
             .read_response()
             .await
-            .context("Expected greeting response from google IMAP server")?
+            .context("Expected greeting response from gmail IMAP server")?
             .context("Failed to read response")?;
     }
 
@@ -161,9 +165,9 @@ where
         ImapAuth::LOGIN { username, password } => {
             check_auth_capability(&mut client, "LOGIN")?;
             client
-                .login(username, password)
+                .login(username, password.expose_secret())
                 .await
-                .map_err(|(e, _)| e.into())
+                .map_err(parse_auth_error)
         }
         ImapAuth::XOAUTH2 {
             username,
@@ -173,14 +177,26 @@ where
 
             let cred = XOAuth2Authenticator {
                 user: username,
-                access_token,
+                access_token: access_token.expose_secret(),
             };
 
             client
                 .authenticate("XOAUTH2", cred)
                 .await
-                .map_err(|(e, _)| e.into())
+                .map_err(parse_auth_error)
         }
+    }
+}
+
+pub fn parse_auth_error<T>((error, _client): (async_imap::error::Error, Client<T>)) -> ImapError
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
+    match error {
+        async_imap::error::Error::No(ref e) if e.contains("AUTHENTICATIONFAILED") => {
+            ImapError::AuthFailed(error)
+        }
+        _ => ImapError::Imap(error),
     }
 }
 

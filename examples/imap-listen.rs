@@ -7,6 +7,7 @@ use hark::{
         imap_connect_tls, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
     },
 };
+use secrecy::Secret;
 use tracing_subscriber::EnvFilter;
 
 enum Auth {
@@ -33,7 +34,9 @@ async fn main() {
 
     let host = std::env::var("HOST").expect("environment variable 'HOST' is required");
     let username = std::env::var("USER").expect("environment variable 'USER' is required");
+
     let password = std::env::var("PASS").expect("environment variable 'PASS' is required");
+    let password = Secret::new(password);
 
     let auth = std::env::var("AUTH").expect("environment variable 'AUTH' is required");
     let auth = auth.parse::<Auth>().unwrap_or_else(|_| Auth::Password);
