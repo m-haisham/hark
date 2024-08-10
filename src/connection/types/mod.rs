@@ -1,5 +1,7 @@
 mod handle;
 
+use chrono::{DateTime, Utc};
+use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
@@ -56,8 +58,32 @@ pub struct Connection {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "auth", rename_all = "lowercase")]
 pub enum ConnectionAuth {
-    Password { password: String },
-    Xoauth2 { token: String },
+    Password {
+        password: String,
+    },
+    Xoauth2 {
+        #[serde(skip_serializing)]
+        access_token: Token,
+        #[serde(skip_serializing)]
+        refresh_token: Token,
+        config: OAuth2Config,
+    },
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Token {
+    pub secret: Secret<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OAuth2Config {
+    #[serde(skip_serializing)]
+    pub client_id: Secret<String>,
+    #[serde(skip_serializing)]
+    pub client_secret: Secret<String>,
+    pub token_uri: String,
+    pub scope: String,
 }
 
 #[derive(Serialize, Debug, Clone)]

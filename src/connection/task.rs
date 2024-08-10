@@ -3,6 +3,7 @@ use std::{sync::Arc, time};
 use anyhow::Context;
 use chrono::Duration;
 use futures::lock::Mutex;
+use secrecy::ExposeSecret;
 use stop_token::StopSource;
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -67,9 +68,9 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             username: connection.username,
             password,
         },
-        ConnectionAuth::Xoauth2 { token } => ImapAuth::XOAUTH2 {
+        ConnectionAuth::Xoauth2 { access_token, .. } => ImapAuth::XOAUTH2 {
             username: connection.username,
-            access_token: token,
+            access_token: access_token.secret.expose_secret().to_string(),
         },
     };
 

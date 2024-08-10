@@ -20,10 +20,10 @@ use tokio::{
 use crate::imap::body::parse_body;
 use types::Message;
 
-#[cfg(not(debug_assertions))]
+#[cfg(debug_assertions)]
 pub type ImapStream = async_native_tls::TlsStream<TcpStream>;
 
-#[cfg(debug_assertions)]
+#[cfg(not(debug_assertions))]
 pub type ImapStream = TcpStream;
 
 #[derive(Debug)]
@@ -89,7 +89,7 @@ pub async fn imap_connect(config: &ImapConnectionConfig) -> anyhow::Result<Sessi
         )
     })?;
 
-    #[cfg(not(debug_assertions))]
+    // #[cfg(not(debug_assertions))]
     let stream = async_native_tls::connect(&config.host, stream)
         .await
         .with_context(|| {
