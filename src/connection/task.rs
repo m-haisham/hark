@@ -1,9 +1,14 @@
-use std::{fmt::Debug, sync::Arc, time};
+use std::{
+    fmt::Debug,
+    sync::Arc,
+    time::{self, Duration},
+};
 
 use anyhow::Context;
 use async_imap::Session;
-use chrono::Duration;
+use chrono::TimeDelta;
 use futures::lock::Mutex;
+use oauth2::{AuthUrl, ClientId, ClientSecret, TokenResponse, TokenUrl};
 use secrecy::ExposeSecret;
 use stop_token::StopSource;
 use tokio::{
@@ -60,12 +65,58 @@ pub async fn run_connection_task(task: ConnectionTask) {
 pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<()> {
     let ConnectionTask {
         id,
-        connection,
+        mut connection,
         receiver,
     } = task;
 
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
+
+    if let ConnectionAuth::Xoauth2 {
+        refresh_token,
+        config,
+        ..
+    } = connection.auth
+    {
+        tracing::info!("Refreshing access token for connection");
+
+        let client: oauth2::basic::BasicClient = oauth2::Client::new(
+            ClientId::new(config.client_id.expose_secret().to_string()),
+            Some(ClientSecret::new(
+                config.client_secret.expose_secret().to_string(),
+            )),
+            AuthUrl::from_url(config.auth_uri.clone()),
+            Some(TokenUrl::from_url(config.token_uri.clone())),
+        );
+
+        let oauth2_refresh_token =
+            oauth2::RefreshToken::new(refresh_token.expose_secret().to_string());
+        let request = client.exchange_refresh_token(&oauth2_refresh_token);
+
+        tracing::debug!("Requesting new access token");
+
+        let response = request
+            .request_async(oauth2::reqwest::async_http_client)
+            .await
+            .context("Failed to refresh access token")?;
+
+        let access_token = response.access_token();
+        let expires_in = response
+            .expires_in()
+            .unwrap_or_else(|| Duration::from_secs(3600));
+
+        let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in)?
+            - chrono::Duration::seconds(60); // subtract 60 seconds to be safe
+
+        connection.auth = ConnectionAuth::Xoauth2 {
+            access_token: secrecy::Secret::new(access_token.secret().clone()),
+            expires_at: Some(expires_at),
+            refresh_token,
+            config,
+        };
+
+        tracing::info!("Access token refreshed successfully");
+    }
 
     let auth = match connection.auth {
         ConnectionAuth::Password { ref password } => ImapAuth::LOGIN {
@@ -76,7 +127,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             ref access_token, ..
         } => ImapAuth::XOAUTH2 {
             username: connection.username.clone(),
-            access_token: access_token.secret.clone(),
+            access_token: access_token.clone(),
         },
     };
 
@@ -120,7 +171,7 @@ where
 {
     let listen_config = ImapListenConfig {
         mailbox: connection.mailbox,
-        lookback_duration: Some(Duration::try_days(30).unwrap()),
+        lookback_duration: Some(TimeDelta::try_days(30).unwrap()),
     };
 
     let (mut session, mut listen) = imap_listen(session, listen_config)
