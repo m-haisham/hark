@@ -52,6 +52,7 @@ pub struct Connection {
     pub username: String,
     #[serde(flatten)]
     pub auth: ConnectionAuth,
+    pub tls: bool,
     pub mailbox: String,
 }
 
@@ -59,7 +60,8 @@ pub struct Connection {
 #[serde(tag = "auth", rename_all = "lowercase")]
 pub enum ConnectionAuth {
     Password {
-        password: String,
+        #[serde(skip_serializing)]
+        password: Secret<String>,
     },
     Xoauth2 {
         #[serde(skip_serializing)]

@@ -1,6 +1,6 @@
 use chrono::Duration;
 use hark::imap::{
-    imap_connect, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
+    imap_connect_tls, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
 };
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() {
 
     println!("Connecting to {}:{} as {}", host, port, username);
 
-    let session = imap_connect(&ImapConnectionConfig {
+    let session = imap_connect_tls(&ImapConnectionConfig {
         host,
         port,
         auth: ImapAuth::LOGIN { username, password },

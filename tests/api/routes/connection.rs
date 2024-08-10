@@ -44,6 +44,7 @@ fn new_connection(name: &str) -> serde_json::Value {
         "name": name,
         "host": "localhost",
         "port": 3143,
+        "tls": false,
         "username": "username",
         "auth": "password",
         "password": "password",
@@ -55,6 +56,7 @@ fn update_connection() -> serde_json::Value {
     serde_json::json!({
         "host": "localhost",
         "port": 3143,
+        "tls": false,
         "username": "username",
         "auth": "password",
         "password": "password",

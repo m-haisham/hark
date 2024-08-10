@@ -2,8 +2,9 @@ mod body;
 pub mod types;
 
 use anyhow::Context;
+use async_native_tls::TlsStream;
 use futures::StreamExt;
-use std::{borrow::Cow, string::FromUtf8Error};
+use std::{borrow::Cow, fmt::Debug, string::FromUtf8Error};
 
 use async_imap::{
     extensions::idle::{self, IdleResponse},
@@ -19,12 +20,6 @@ use tokio::{
 
 use crate::imap::body::parse_body;
 use types::Message;
-
-#[cfg(debug_assertions)]
-pub type ImapStream = async_native_tls::TlsStream<TcpStream>;
-
-#[cfg(not(debug_assertions))]
-pub type ImapStream = TcpStream;
 
 #[derive(Debug)]
 pub struct ImapConnectionConfig {
@@ -76,11 +71,13 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
 }
 
 #[tracing::instrument(
-    name = "IMAP Connect",
+    name = "IMAP Connect with TLS",
     skip(config),
     fields(host = %config.host.as_str(), port = %config.port)
 )]
-pub async fn imap_connect(config: &ImapConnectionConfig) -> anyhow::Result<Session<ImapStream>> {
+pub async fn imap_connect_tls(
+    config: &ImapConnectionConfig,
+) -> anyhow::Result<Session<TlsStream<TcpStream>>> {
     let addr = (config.host.as_str(), config.port);
     let stream = TcpStream::connect(addr).await.with_context(|| {
         format!(
@@ -89,7 +86,6 @@ pub async fn imap_connect(config: &ImapConnectionConfig) -> anyhow::Result<Sessi
         )
     })?;
 
-    // #[cfg(not(debug_assertions))]
     let stream = async_native_tls::connect(&config.host, stream)
         .await
         .with_context(|| {
@@ -105,11 +101,31 @@ pub async fn imap_connect(config: &ImapConnectionConfig) -> anyhow::Result<Sessi
         .context("Failed to authenticate with IMAP server")
 }
 
+#[tracing::instrument(
+    name = "IMAP Connect with TCP",
+    skip(config),
+    fields(host = %config.host.as_str(), port = %config.port)
+)]
+pub async fn imap_connect_tcp(config: &ImapConnectionConfig) -> anyhow::Result<Session<TcpStream>> {
+    let addr = (config.host.as_str(), config.port);
+    let stream = TcpStream::connect(addr).await.with_context(|| {
+        format!(
+            "Failed to connect to IMAP server at {}:{}",
+            config.host, config.port
+        )
+    })?;
+
+    let client = async_imap::Client::new(stream);
+    imap_auth(client, &config.auth)
+        .await
+        .context("Failed to authenticate with IMAP server")
+}
+
 #[tracing::instrument(name = "IMAP Authenticate", skip(client))]
-pub async fn imap_auth(
-    mut client: Client<ImapStream>,
-    auth: &ImapAuth,
-) -> Result<Session<ImapStream>, ImapError> {
+pub async fn imap_auth<T>(mut client: Client<T>, auth: &ImapAuth) -> Result<Session<T>, ImapError>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     match &auth {
         ImapAuth::LOGIN { username, password } => {
             check_auth_capability(&mut client, "LOGIN")?;
@@ -138,10 +154,10 @@ pub async fn imap_auth(
 }
 
 #[tracing::instrument(skip(client))]
-fn check_auth_capability(
-    client: &mut Client<ImapStream>,
-    capability_str: &str,
-) -> Result<(), ImapError> {
+fn check_auth_capability<T>(client: &mut Client<T>, capability_str: &str) -> Result<(), ImapError>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     let capability = &imap_proto::Capability::Auth(Cow::Borrowed(capability_str));
 
     // if !client.capabilities()?.has(capability) {
@@ -181,10 +197,13 @@ pub enum ImapListenError {
 }
 
 #[tracing::instrument(skip(session))]
-pub async fn imap_listen(
-    mut session: Session<ImapStream>,
+pub async fn imap_listen<T>(
+    mut session: Session<T>,
     config: ImapListenConfig,
-) -> Result<(Session<ImapStream>, ImapListen), ImapError> {
+) -> Result<(Session<T>, ImapListen), ImapError>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     let capability = async_imap::types::Capability::Atom(String::from("IDLE"));
 
     if !session.capabilities().await?.has(&capability) {
@@ -208,10 +227,13 @@ pub async fn imap_listen(
     ))
 }
 
-async fn imap_lookback(
-    session: &mut Session<ImapStream>,
+async fn imap_lookback<T>(
+    session: &mut Session<T>,
     duration: Duration,
-) -> Result<Vec<Message>, ImapListenError> {
+) -> Result<Vec<Message>, ImapListenError>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     let from_date = Utc::now() - duration;
     let formatted = from_date.format("%d-%b-%Y");
     let uids = session.search(format!("UNSEEN SINCE {formatted}")).await?;
@@ -221,10 +243,13 @@ async fn imap_lookback(
 }
 
 #[tracing::instrument(skip(session))]
-pub async fn imap_idle(
+pub async fn imap_idle<T>(
     listen: &mut ImapListen,
-    mut session: Session<ImapStream>,
-) -> Result<(Session<ImapStream>, Vec<Message>), ImapListenError> {
+    mut session: Session<T>,
+) -> Result<(Session<T>, Vec<Message>), ImapListenError>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     let mut idle = session.idle();
     idle.init().await?;
 
@@ -244,7 +269,7 @@ pub async fn handle_idle_response<T>(
     response: IdleResponse,
 ) -> Result<(idle::Handle<T>, IdleEvent), ImapListenError>
 where
-    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
     match response {
         IdleResponse::ManualInterrupt => {
@@ -272,7 +297,7 @@ pub async fn handle_idle_event<T>(
     event: IdleEvent,
 ) -> Result<Vec<Message>, ImapListenError>
 where
-    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
     match event {
         IdleEvent::Exit => {
@@ -341,7 +366,7 @@ pub enum IdleEvent {
 #[tracing::instrument(skip(session))]
 async fn fetch_seq<T>(session: &mut Session<T>, seq: &str) -> Result<Vec<Message>, ImapListenError>
 where
-    T: AsyncRead + AsyncWrite + std::fmt::Debug + Send + Unpin,
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
     let mut messages = session
         .fetch(seq, "(FLAGS INTERNALDATE RFC822 BODY[] UID)")

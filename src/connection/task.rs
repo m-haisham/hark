@@ -1,16 +1,20 @@
-use std::{sync::Arc, time};
+use std::{fmt::Debug, sync::Arc, time};
 
 use anyhow::Context;
+use async_imap::Session;
 use chrono::Duration;
 use futures::lock::Mutex;
 use secrecy::ExposeSecret;
 use stop_token::StopSource;
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::mpsc,
+};
 use tracing::instrument;
 
 use crate::imap::{
-    handle_idle_event, handle_idle_response, imap_connect, imap_listen, ImapAuth,
-    ImapConnectionConfig, ImapListenConfig,
+    handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
+    ImapAuth, ImapConnectionConfig, ImapListenConfig,
 };
 
 use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
@@ -64,26 +68,55 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
     let auth = match connection.auth {
-        ConnectionAuth::Password { password } => ImapAuth::LOGIN {
-            username: connection.username,
-            password,
+        ConnectionAuth::Password { ref password } => ImapAuth::LOGIN {
+            username: connection.username.clone(),
+            password: password.expose_secret().to_string(),
         },
-        ConnectionAuth::Xoauth2 { access_token, .. } => ImapAuth::XOAUTH2 {
-            username: connection.username,
+        ConnectionAuth::Xoauth2 {
+            ref access_token, ..
+        } => ImapAuth::XOAUTH2 {
+            username: connection.username.clone(),
             access_token: access_token.secret.expose_secret().to_string(),
         },
     };
 
     let imap_connection = ImapConnectionConfig {
-        host: connection.host,
+        host: connection.host.clone(),
         port: connection.port,
         auth,
     };
 
-    let session = imap_connect(&imap_connection)
-        .await
-        .context("Failed to connect to IMAP server")?;
+    if connection.tls {
+        tracing::info!("Connecting to IMAP server with TLS");
 
+        let session = imap_connect_tls(&imap_connection)
+            .await
+            .context("Failed to connect to IMAP server")?;
+
+        idle(connection, session, state).await?;
+    } else {
+        tracing::info!("Connecting to IMAP server without TLS");
+
+        let session = imap_connect_tcp(&imap_connection)
+            .await
+            .context("Failed to connect to IMAP server")?;
+
+        idle(connection, session, state).await?;
+    }
+
+    listen_handle.abort();
+
+    Ok(())
+}
+
+async fn idle<T>(
+    connection: Connection,
+    session: Session<T>,
+    state: Arc<Mutex<ConnectionTaskState>>,
+) -> anyhow::Result<()>
+where
+    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
+{
     let listen_config = ImapListenConfig {
         mailbox: connection.mailbox,
         lookback_duration: Some(Duration::try_days(30).unwrap()),
@@ -115,8 +148,6 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             println!("Received message: {:#?}", message);
         }
     }
-
-    listen_handle.abort();
 
     Ok(())
 }
