@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Context;
 use async_imap::Session;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use futures::lock::Mutex;
 use oauth2::TokenResponse;
 use stop_token::StopSource;
@@ -99,6 +99,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         flavour: connection.flavour,
     };
 
+    // TODO: add a loop here to reconnect if:
+    // 1. connection is terminated when expired
+    // 2. server closed connection unexpectedly
+
+    // Add backoff strategy, e.g.:
+    // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
+
     if connection.tls {
         tracing::info!("Connecting to IMAP server with TLS");
 
@@ -143,11 +150,19 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum IdleError {
+    #[error("Connection terminated after set timer")]
+    Expired,
+    #[error("{0}")]
+    Other(#[from] anyhow::Error),
+}
+
 async fn idle<T>(
     connection: Connection,
     session: Session<T>,
     state: Arc<Mutex<ConnectionTaskState>>,
-) -> anyhow::Result<()>
+) -> Result<(), IdleError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
@@ -160,24 +175,37 @@ where
         .await
         .context("Failed to start listening to IMAP server")?;
 
+    let expires_at = match &connection.auth {
+        ConnectionAuth::Password { .. } => None,
+        ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
+    };
+
     loop {
         let mut idle = session.idle();
-        idle.init().await?;
+        idle.init().await.context("Failed to initialise IDLE")?;
 
         let (idle_wait, interrupt) = idle.wait();
 
         // check state for stop every 10 seconds and drop interrupt if stop is true
         // while simultaneously waiting for idle_wait to complete
         let response = tokio::select! {
-            response = idle_wait => response,
+            result = idle_wait => {
+                result.context("Failed to wait for idle response")?
+            },
             _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
-        }?;
+            _ = terminate_on_expired(expires_at) => return Err(IdleError::Expired),
+        };
 
-        let (idle, result) = handle_idle_response(idle, response).await?;
+        let (idle, result) = handle_idle_response(idle, response)
+            .await
+            .context("Failed to handle IDLE response")?;
 
-        session = idle.done().await?;
+        session = idle.done().await.context("Failed to complete IDLE")?;
 
-        let messages = handle_idle_event(&mut session, &mut listen, result).await?;
+        let messages = handle_idle_event(&mut session, &mut listen, result)
+            .await
+            .context("Failed to handle IDLE event")?;
+
         for message in messages {
             println!("Received message: {:#?}", message);
         }
@@ -205,6 +233,21 @@ async fn drop_interrupt_when_stopped(
         }
 
         tokio::time::sleep(time::Duration::from_secs(10)).await;
+    }
+}
+
+async fn terminate_on_expired(expires_at: Option<DateTime<Utc>>) {
+    let duration = expires_at
+        .map(|expires_at| {
+            let duration = expires_at - Utc::now();
+            duration.to_std().ok()
+        })
+        .flatten();
+
+    if let Some(duration) = duration {
+        tokio::time::sleep(duration).await;
+    } else {
+        futures::future::pending::<()>().await;
     }
 }
 
