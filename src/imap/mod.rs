@@ -4,6 +4,7 @@ pub mod types;
 use anyhow::Context;
 use async_native_tls::TlsStream;
 use futures::StreamExt;
+use oauth2::AccessToken;
 use secrecy::{ExposeSecret, Secret};
 use std::{borrow::Cow, fmt::Debug, string::FromUtf8Error};
 
@@ -38,7 +39,7 @@ pub enum ImapAuth {
     },
     XOAUTH2 {
         username: String,
-        access_token: Secret<String>,
+        access_token: AccessToken,
     },
 }
 
@@ -177,7 +178,7 @@ where
 
             let cred = XOAuth2Authenticator {
                 user: username,
-                access_token: access_token.expose_secret(),
+                access_token: access_token.secret(),
             };
 
             client

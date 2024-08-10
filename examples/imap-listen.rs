@@ -7,6 +7,7 @@ use hark::{
         imap_connect_tls, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
     },
 };
+use oauth2::AccessToken;
 use secrecy::Secret;
 use tracing_subscriber::EnvFilter;
 
@@ -36,7 +37,6 @@ async fn main() {
     let username = std::env::var("USER").expect("environment variable 'USER' is required");
 
     let password = std::env::var("PASS").expect("environment variable 'PASS' is required");
-    let password = Secret::new(password);
 
     let auth = std::env::var("AUTH").expect("environment variable 'AUTH' is required");
     let auth = auth.parse::<Auth>().unwrap_or_else(|_| Auth::Password);
@@ -51,10 +51,13 @@ async fn main() {
     tracing::info!("Connecting to {}:{} as {}", host, port, username);
 
     let auth = match auth {
-        Auth::Password => ImapAuth::LOGIN { username, password },
+        Auth::Password => ImapAuth::LOGIN {
+            username,
+            password: Secret::new(password),
+        },
         Auth::OAuth2 => ImapAuth::XOAUTH2 {
             username,
-            access_token: password,
+            access_token: AccessToken::new(password),
         },
     };
 

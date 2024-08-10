@@ -1,10 +1,10 @@
 mod handle;
 
 use chrono::{DateTime, Utc};
+use oauth2::{AccessToken, AuthUrl, ClientId, ClientSecret, RefreshToken, TokenUrl};
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use url::Url;
 
 pub use handle::ConnectionHandle;
 
@@ -68,10 +68,10 @@ pub enum ConnectionAuth {
     },
     Xoauth2 {
         #[serde(skip_serializing)]
-        access_token: Secret<String>,
+        access_token: AccessToken,
         expires_at: Option<DateTime<Utc>>,
         #[serde(skip_serializing)]
-        refresh_token: Secret<String>,
+        refresh_token: RefreshToken,
         config: OAuth2Config,
     },
 }
@@ -79,11 +79,11 @@ pub enum ConnectionAuth {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OAuth2Config {
     #[serde(skip_serializing)]
-    pub client_id: Secret<String>,
+    pub client_id: ClientId,
     #[serde(skip_serializing)]
-    pub client_secret: Secret<String>,
-    pub auth_uri: Url,
-    pub token_uri: Url,
+    pub client_secret: ClientSecret,
+    pub auth_uri: AuthUrl,
+    pub token_uri: TokenUrl,
     pub scope: String,
 }
 

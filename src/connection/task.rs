@@ -8,8 +8,7 @@ use anyhow::Context;
 use async_imap::Session;
 use chrono::TimeDelta;
 use futures::lock::Mutex;
-use oauth2::{AuthUrl, ClientId, ClientSecret, TokenResponse, TokenUrl};
-use secrecy::ExposeSecret;
+use oauth2::TokenResponse;
 use stop_token::StopSource;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -81,17 +80,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         tracing::info!("Refreshing access token for connection");
 
         let client: oauth2::basic::BasicClient = oauth2::Client::new(
-            ClientId::new(config.client_id.expose_secret().to_string()),
-            Some(ClientSecret::new(
-                config.client_secret.expose_secret().to_string(),
-            )),
-            AuthUrl::from_url(config.auth_uri.clone()),
-            Some(TokenUrl::from_url(config.token_uri.clone())),
+            config.client_id.clone(),
+            Some(config.client_secret.clone()),
+            config.auth_uri.clone(),
+            Some(config.token_uri.clone()),
         );
 
-        let oauth2_refresh_token =
-            oauth2::RefreshToken::new(refresh_token.expose_secret().to_string());
-        let request = client.exchange_refresh_token(&oauth2_refresh_token);
+        let request = client.exchange_refresh_token(&refresh_token);
 
         tracing::debug!("Requesting new access token");
 
@@ -100,7 +95,6 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             .await
             .context("Failed to refresh access token")?;
 
-        let access_token = response.access_token();
         let expires_in = response
             .expires_in()
             .unwrap_or_else(|| Duration::from_secs(3600));
@@ -109,7 +103,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             - chrono::Duration::seconds(60); // subtract 60 seconds to be safe
 
         connection.auth = ConnectionAuth::Xoauth2 {
-            access_token: secrecy::Secret::new(access_token.secret().clone()),
+            access_token: response.access_token().clone(),
             expires_at: Some(expires_at),
             refresh_token,
             config,
