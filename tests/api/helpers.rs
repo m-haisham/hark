@@ -45,9 +45,15 @@ pub async fn spawn_app_with_settings() -> TestApp {
     // During testing the working directory is the package directory.
     let settings = get_config("config.test.toml").expect("Failed to read configuration");
 
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(ConnectionPool::new()),
         background_pool: Mutex::new(BackgroundPool::new()),
+        client,
         settings: settings.clone(),
     });
 

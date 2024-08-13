@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
+use url::Url;
 
 use crate::connection::types::{Connection, ConnectionId};
 
@@ -20,10 +21,27 @@ pub struct Settings {
     pub server: ServerSettings,
     #[serde(default)]
     pub connections: HashMap<ConnectionId, Connection>,
+    #[serde(default)]
+    pub anchor: AnchorSettings,
 }
 
 #[derive(Deserialize, Default, Debug, Clone)]
 pub struct ServerSettings {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AnchorSettings {
+    pub fetch_url: Option<Url>,
+    pub callback_url: Url,
+}
+
+impl Default for AnchorSettings {
+    fn default() -> Self {
+        AnchorSettings {
+            fetch_url: None,
+            callback_url: Url::parse("http://localhost:8080").unwrap(),
+        }
+    }
 }

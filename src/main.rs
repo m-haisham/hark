@@ -30,9 +30,15 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("Failed to bind to the tcp stream");
 
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Failed to build reqwest client");
+
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(connection_pool),
         background_pool: Mutex::new(background_pool),
+        client,
         settings,
     });
 

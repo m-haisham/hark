@@ -129,7 +129,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
                 }))
                 .await?;
 
-            idle(inner_connection, session, state).await
+            idle(&id, inner_connection, session, background.clone(), state).await
         } else {
             tracing::info!("Connecting to IMAP server without TLS");
 
@@ -144,7 +144,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
                 }))
                 .await?;
 
-            idle(inner_connection, session, state).await
+            idle(&id, inner_connection, session, background.clone(), state).await
         };
 
         match result {
@@ -190,8 +190,10 @@ pub enum IdleError {
 }
 
 async fn idle<T>(
+    id: &ConnectionId,
     connection: Connection,
     session: Session<T>,
+    background: async_channel::Sender<BackgroundCommand>,
     state: Arc<Mutex<ConnectionTaskState>>,
 ) -> Result<(), IdleError>
 where
@@ -238,7 +240,15 @@ where
             .context("Failed to handle IDLE event")?;
 
         for message in messages {
-            println!("Received message: {:#?}", message);
+            tracing::debug!("Received message: {:?}", message);
+
+            background
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::MessageReceived(message),
+                }))
+                .await
+                .context("Failed to send message to background task")?;
         }
     }
 

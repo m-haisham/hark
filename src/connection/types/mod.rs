@@ -8,12 +8,14 @@ use std::fmt::Display;
 
 pub use handle::ConnectionHandle;
 
+use crate::imap::types::Message;
+
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectionId(String);
 
 impl Display for ConnectionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "connection:{}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -128,4 +130,5 @@ pub enum ConnectionEventKind {
     Started,
     Stopped,
     Updated(Connection),
+    MessageReceived(Message),
 }

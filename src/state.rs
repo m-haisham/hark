@@ -10,5 +10,6 @@ pub type ArcAppState = Arc<AppState>;
 pub struct AppState {
     pub connection_pool: Mutex<ConnectionPool>,
     pub background_pool: Mutex<BackgroundPool>,
+    pub client: reqwest::Client,
     pub settings: Settings,
 }
