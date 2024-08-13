@@ -78,7 +78,12 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
     if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
-        connection.auth = ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+        // Update the access token if it is about to expire, expired, or expires_at is not provided
+        if (oauth2.expires_at.unwrap_or_else(Utc::now) - Utc::now()).num_seconds() < 60 {
+            connection.auth = ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+        } else {
+            connection.auth = ConnectionAuth::OAuth2(oauth2);
+        }
     }
 
     let auth = match &connection.auth {
@@ -99,43 +104,62 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         flavour: connection.flavour,
     };
 
-    // TODO: add a loop here to reconnect if:
-    // 1. connection is terminated when expired
-    // 2. server closed connection unexpectedly
+    loop {
+        let inner_connection = connection.clone();
+        let state = Arc::clone(&state);
 
-    // Add backoff strategy, e.g.:
-    // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
+        let result = if inner_connection.tls {
+            tracing::info!("Connecting to IMAP server with TLS");
 
-    if connection.tls {
-        tracing::info!("Connecting to IMAP server with TLS");
+            let session = imap_connect_tls(&imap_connection)
+                .await
+                .context("Failed to connect to IMAP server")?;
 
-        let session = imap_connect_tls(&imap_connection)
-            .await
-            .context("Failed to connect to IMAP server")?;
+            background
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::Started,
+                }))
+                .await?;
 
-        background
-            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                id: id.clone(),
-                event: ConnectionEventKind::Started,
-            }))
-            .await?;
+            idle(inner_connection, session, state).await
+        } else {
+            tracing::info!("Connecting to IMAP server without TLS");
 
-        idle(connection, session, state).await?;
-    } else {
-        tracing::info!("Connecting to IMAP server without TLS");
+            let session = imap_connect_tcp(&imap_connection)
+                .await
+                .context("Failed to connect to IMAP server")?;
 
-        let session = imap_connect_tcp(&imap_connection)
-            .await
-            .context("Failed to connect to IMAP server")?;
+            background
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::Started,
+                }))
+                .await?;
 
-        background
-            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                id: id.clone(),
-                event: ConnectionEventKind::Started,
-            }))
-            .await?;
+            idle(inner_connection, session, state).await
+        };
 
-        idle(connection, session, state).await?;
+        match result {
+            Ok(()) => {
+                tracing::info!("Connection task completed successfully");
+                break;
+            }
+            Err(IdleError::Expired) => {
+                tracing::info!("Connection task expired, reconnecting");
+
+                if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
+                    connection.auth =
+                        ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+                }
+            }
+            Err(err) => {
+                tracing::error!("Connection task failed: {:?}", err);
+                // TODO: Add retry with backoff strategy, e.g.:
+                // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
+                break;
+            }
+        }
     }
 
     listen_handle.abort();
@@ -152,7 +176,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
 
 #[derive(Debug, thiserror::Error)]
 pub enum IdleError {
-    #[error("Connection terminated after set timer")]
+    #[error("Connection terminated after access token expired or revoked")]
     Expired,
     #[error("{0}")]
     Other(#[from] anyhow::Error),
@@ -175,11 +199,6 @@ where
         .await
         .context("Failed to start listening to IMAP server")?;
 
-    let expires_at = match &connection.auth {
-        ConnectionAuth::Password { .. } => None,
-        ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
-    };
-
     loop {
         let mut idle = session.idle();
         idle.init().await.context("Failed to initialise IDLE")?;
@@ -188,12 +207,17 @@ where
 
         // check state for stop every 10 seconds and drop interrupt if stop is true
         // while simultaneously waiting for idle_wait to complete
-        let response = tokio::select! {
-            result = idle_wait => {
-                result.context("Failed to wait for idle response")?
-            },
+        let response_result = tokio::select! {
+            result = idle_wait => result,
             _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
-            _ = terminate_on_expired(expires_at) => return Err(IdleError::Expired),
+        };
+
+        let response = match response_result {
+            Ok(response) => response,
+            Err(async_imap::error::Error::Io(e)) if e.to_string().contains("DONE") => {
+                return Err(IdleError::Expired)
+            }
+            Err(e) => return Err(IdleError::Other(e.into())),
         };
 
         let (idle, result) = handle_idle_response(idle, response)
@@ -229,13 +253,18 @@ async fn drop_interrupt_when_stopped(
             drop(interrupt);
             break;
         } else {
-            tracing::debug!("Connection task is not stopped yet");
+            tracing::debug!("Connection is active, waiting for stop command");
         }
 
         tokio::time::sleep(time::Duration::from_secs(10)).await;
     }
 }
 
+#[instrument(
+    name = "Terminate on expired",
+    skip_all,
+    fields(expires_at = ?expires_at)
+)]
 async fn terminate_on_expired(expires_at: Option<DateTime<Utc>>) {
     let duration = expires_at
         .map(|expires_at| {
