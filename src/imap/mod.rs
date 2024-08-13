@@ -6,10 +6,11 @@ use async_native_tls::TlsStream;
 use futures::StreamExt;
 use oauth2::AccessToken;
 use secrecy::{ExposeSecret, Secret};
-use std::{borrow::Cow, fmt::Debug, string::FromUtf8Error};
+use std::{fmt::Debug, string::FromUtf8Error};
 
 use async_imap::{
     extensions::idle::{self, IdleResponse},
+    types::Capability,
     Client, Session,
 };
 use chrono::{Duration, Utc};
@@ -54,8 +55,8 @@ pub enum ImapError {
     #[error("{0}")]
     Imap(#[from] async_imap::error::Error),
 
-    #[error("Imap server does not define the capability: {0}")]
-    LackingCapability(String),
+    #[error("Imap server does not define the capability: {1}")]
+    LackingCapability(Capability, String),
 
     #[error("{0}")]
     AuthFailed(#[source] async_imap::error::Error),
@@ -158,24 +159,19 @@ where
 }
 
 #[tracing::instrument(name = "IMAP Authenticate", skip(client))]
-pub async fn imap_auth<T>(mut client: Client<T>, auth: &ImapAuth) -> Result<Session<T>, ImapError>
+pub async fn imap_auth<T>(client: Client<T>, auth: &ImapAuth) -> Result<Session<T>, ImapError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
     match &auth {
-        ImapAuth::LOGIN { username, password } => {
-            check_auth_capability(&mut client, "LOGIN")?;
-            client
-                .login(username, password.expose_secret())
-                .await
-                .map_err(parse_auth_error)
-        }
+        ImapAuth::LOGIN { username, password } => client
+            .login(username, password.expose_secret())
+            .await
+            .map_err(parse_auth_error),
         ImapAuth::XOAUTH2 {
             username,
             access_token,
         } => {
-            check_auth_capability(&mut client, "XOAUTH2")?;
-
             let cred = XOAuth2Authenticator {
                 user: username,
                 access_token: access_token.secret(),
@@ -201,16 +197,23 @@ where
     }
 }
 
-#[tracing::instrument(skip(client))]
-fn check_auth_capability<T>(client: &mut Client<T>, capability_str: &str) -> Result<(), ImapError>
+#[tracing::instrument(skip_all)]
+async fn check_capability<T>(
+    session: &mut Session<T>,
+    capability: Capability,
+) -> Result<(), ImapError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
-    let capability = &imap_proto::Capability::Auth(Cow::Borrowed(capability_str));
+    if !session.capabilities().await?.has(&capability) {
+        let display = match &capability {
+            Capability::Imap4rev1 => "IMAP4rev1".to_string(),
+            Capability::Auth(v) => format!("AUTH={}", v),
+            Capability::Atom(v) => format!("{}", v),
+        };
 
-    // if !client.capabilities()?.has(capability) {
-    //     return Err(ImapError::LackingCapability(capability_str.to_string()));
-    // }
+        return Err(ImapError::LackingCapability(capability, display));
+    }
 
     Ok(())
 }
@@ -219,14 +222,6 @@ where
 pub struct ImapListen {
     config: ImapListenConfig,
     size: u32,
-    state: ImapListenState,
-}
-
-#[derive(Debug)]
-pub enum ImapListenState {
-    Lookback(Duration),
-    Idle,
-    Error,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -252,30 +247,21 @@ pub async fn imap_listen<T>(
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
-    let capability = async_imap::types::Capability::Atom(String::from("IDLE"));
-
-    if !session.capabilities().await?.has(&capability) {
-        return Err(ImapError::LackingCapability("IDLE".to_string()));
-    }
+    // Check if the server supports the IDLE capability
+    check_capability(&mut session, Capability::Atom("IDLE".to_string())).await?;
 
     let mailbox = session.select(&config.mailbox).await?;
-
-    let state = match &config.lookback_duration {
-        Some(duration) => ImapListenState::Lookback(duration.clone()),
-        None => ImapListenState::Idle,
-    };
 
     Ok((
         session,
         ImapListen {
             config,
             size: mailbox.exists,
-            state,
         },
     ))
 }
 
-async fn imap_lookback<T>(
+pub async fn imap_lookback<T>(
     session: &mut Session<T>,
     duration: Duration,
 ) -> Result<Vec<Message>, ImapListenError>

@@ -81,6 +81,13 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         // Update the access token if it is about to expire, expired, or expires_at is not provided
         if (oauth2.expires_at.unwrap_or_else(Utc::now) - Utc::now()).num_seconds() < 60 {
             connection.auth = ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+
+            background
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::Updated(connection.clone()),
+                }))
+                .await?;
         } else {
             connection.auth = ConnectionAuth::OAuth2(oauth2);
         }

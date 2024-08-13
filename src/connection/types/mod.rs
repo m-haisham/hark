@@ -127,4 +127,5 @@ pub struct ConnectionEvent {
 pub enum ConnectionEventKind {
     Started,
     Stopped,
+    Updated(Connection),
 }

@@ -63,6 +63,17 @@ pub async fn background_worker_inner(
                     connection.state = ConnectionState::Stopped;
                     tracing::info!("Connection {} stopped", id);
                 }
+                ConnectionEventKind::Updated(connection) => {
+                    tracing::debug!("Updating connection {}", id);
+                    let mut lock = state.connection_pool.lock().await;
+                    let Some(existing) = lock.get_connection_mut(&id) else {
+                        tracing::warn!("Connection {} not found", id);
+                        continue;
+                    };
+
+                    existing.connection = connection;
+                    tracing::info!("Connection {} updated", id);
+                }
             },
             BackgroundCommand::Stop => {
                 tracing::info!("Background worker received stop command");
