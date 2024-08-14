@@ -237,7 +237,6 @@ where
         let (idle_wait, interrupt) = idle.wait();
 
         // check state for stop every 10 seconds and drop interrupt if stop is true
-        // while simultaneously waiting for idle_wait to complete
         let response_result = tokio::select! {
             result = idle_wait => result,
             _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,

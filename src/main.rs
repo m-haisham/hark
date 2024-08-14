@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use futures::lock::Mutex;
 use hark::{
+    anchor::Anchor,
     background::BackgroundPool,
     connection::ConnectionPool,
     settings::{self},
@@ -35,10 +36,14 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .expect("Failed to build reqwest client");
 
+    let anchor = Anchor::new_with_ping(client.clone(), settings.anchor.clone())
+        .await
+        .expect("Failed to ping the anchor");
+
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(connection_pool),
         background_pool: Mutex::new(background_pool),
-        client,
+        anchor,
         settings,
     });
 

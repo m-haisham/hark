@@ -2,6 +2,7 @@ use std::{future::IntoFuture, sync::Arc};
 
 use futures::lock::Mutex;
 use hark::{
+    anchor::Anchor,
     background::BackgroundPool,
     connection::ConnectionPool,
     settings::get_config,
@@ -10,6 +11,8 @@ use hark::{
     telemetry::{get_subscriber, init_subscriber},
 };
 use once_cell::sync::Lazy;
+use url::Url;
+use wiremock::MockServer;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -27,6 +30,7 @@ pub struct TestApp {
     pub address: String,
     pub state: Arc<AppState>,
     pub api_client: reqwest::Client,
+    pub mock_server: MockServer,
 }
 
 #[inline]
@@ -42,18 +46,26 @@ pub async fn spawn_app_with_settings() -> TestApp {
         .expect("Failed to bind to random port");
     let port = listener.local_addr().unwrap().port();
 
+    let mock_server = MockServer::start().await;
+
     // During testing the working directory is the package directory.
-    let settings = get_config("config.test.toml").expect("Failed to read configuration");
+    let mut settings = get_config("config.test.toml").expect("Failed to read configuration");
+    settings.anchor.callback_url = Url::parse(&mock_server.uri())
+        .expect("Failed to parse mock server URL")
+        .join("/callback")
+        .expect("Failed to join callback path");
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();
 
+    let anchor = Anchor::new(client.clone(), settings.anchor.clone());
+
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(ConnectionPool::new()),
         background_pool: Mutex::new(BackgroundPool::new()),
-        client,
+        anchor,
         settings: settings.clone(),
     });
 
@@ -72,6 +84,7 @@ pub async fn spawn_app_with_settings() -> TestApp {
         address: format!("http://127.0.0.1:{}", port),
         state,
         api_client: client,
+        mock_server,
     }
 }
 

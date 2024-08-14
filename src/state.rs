@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use futures::lock::Mutex;
 
-use crate::{background::BackgroundPool, connection::ConnectionPool, settings::Settings};
+use crate::{
+    anchor::Anchor, background::BackgroundPool, connection::ConnectionPool, settings::Settings,
+};
 
 pub type ArcAppState = Arc<AppState>;
 
@@ -10,6 +12,6 @@ pub type ArcAppState = Arc<AppState>;
 pub struct AppState {
     pub connection_pool: Mutex<ConnectionPool>,
     pub background_pool: Mutex<BackgroundPool>,
-    pub client: reqwest::Client,
+    pub anchor: Anchor,
     pub settings: Settings,
 }
