@@ -1,2 +1,3 @@
 /target
 *.test.toml
+config.toml
