@@ -60,9 +60,24 @@ async fn listen_command(
 
 #[tracing::instrument(name = "Connection Task", skip(task), fields(id = %task.id))]
 pub async fn run_connection_task(task: ConnectionTask) {
+    let id = task.id.clone();
+    let background = task.background.clone();
+
     let result = run_connection_task_inner(task).await;
+
     if let Err(err) = result {
         tracing::error!("Connection task failed: {:?}", err);
+
+        let command_result = background
+            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                id: id.clone(),
+                event: ConnectionEventKind::Failed(format!("{:?}", err)),
+            }))
+            .await;
+
+        if let Err(err) = command_result {
+            tracing::error!("Failed to send failed event to background task: {:?}", err);
+        }
     }
 }
 
@@ -169,8 +184,10 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         }
     }
 
+    tracing::debug!("Aborting command listening task");
     listen_handle.abort();
 
+    tracing::debug!("Sending stopped event to background task");
     background
         .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
             id,

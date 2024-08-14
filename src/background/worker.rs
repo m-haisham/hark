@@ -76,6 +76,17 @@ pub async fn background_worker_inner(
                         existing.connection = connection;
                         tracing::info!("Connection {} updated", id);
                     }
+                    ConnectionEventKind::Failed(error) => {
+                        tracing::debug!("Marking connection {} as failed", id);
+                        let mut lock = state.connection_pool.lock().await;
+                        let Some(connection) = lock.get_connection_mut(&id) else {
+                            tracing::warn!("Connection {} not found", id);
+                            continue;
+                        };
+
+                        tracing::error!("Connection {} failed: {}", id, error);
+                        connection.state = ConnectionState::Failed(error);
+                    }
                     ConnectionEventKind::MessageReceived(message) => {
                         tracing::debug!("Received message for connection {}", id);
                         let lock = state.connection_pool.lock().await;

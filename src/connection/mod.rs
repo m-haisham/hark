@@ -43,7 +43,9 @@ impl ConnectionPool {
         self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(task::run_connection_task(task));
-        self.handles.insert(id, join_handle);
+        self.handles.insert(id.clone(), join_handle);
+
+        tracing::debug!("Spawned connection task: {:?}", id);
     }
 
     pub fn list_connections(&self) -> impl Iterator<Item = (&ConnectionId, &ConnectionHandle)> {

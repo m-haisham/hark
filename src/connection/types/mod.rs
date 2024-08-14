@@ -107,11 +107,14 @@ impl Display for ImapFlavour {
 }
 
 #[derive(Serialize, Debug, Clone)]
+#[serde(tag = "type", content = "data")]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectionState {
     Starting,
     Running,
     Stopping,
     Stopped,
+    Failed(String),
 }
 
 #[derive(Debug)]
@@ -129,6 +132,7 @@ pub struct ConnectionEvent {
 pub enum ConnectionEventKind {
     Started,
     Stopped,
+    Failed(String),
     Updated(Connection),
     MessageReceived(Message),
 }
