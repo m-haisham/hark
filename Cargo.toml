@@ -45,5 +45,12 @@ default-features = false
 features = ["runtime-tokio"]
 
 [dev-dependencies]
+lettre = { version = "0.11.7", features = [
+    "builder",
+    "smtp-transport",
+    "tokio1-native-tls",
+    "tokio1",
+    "serde",
+] }
 rand = "0.8.5"
 wiremock = "0.6.1"

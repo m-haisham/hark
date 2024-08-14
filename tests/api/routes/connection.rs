@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use crate::helpers::{spawn_app, TestApp};
 
-async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serde_json::Value {
+pub async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serde_json::Value {
     let response = app
         .api_client
         .post(&format!("{}/connections", app.address))
@@ -21,7 +21,7 @@ async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serd
     connection["connection"].take()
 }
 
-async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
+pub async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
     let response = app
         .api_client
         .get(&format!("{}/connections/{}", app.address, id))
@@ -39,7 +39,7 @@ async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
     connection["connection"].take()
 }
 
-fn new_connection(name: &str) -> serde_json::Value {
+pub fn new_connection(name: &str) -> serde_json::Value {
     serde_json::json!({
         "name": name,
         "host": "localhost",
