@@ -1,35 +1,11 @@
-use lettre::AsyncTransport;
 use wiremock::matchers::{method, path};
-use wiremock::Mock;
+use wiremock::{Mock, MockServer};
 
 use crate::helpers::{spawn_app, TestApp};
 use crate::matchers::callback_type;
 use crate::routes::connection::{create_connection, new_connection};
 
 use super::connection::get_connection;
-
-async fn send_test_email() {
-    use lettre::transport::smtp::authentication::Credentials;
-    use lettre::{AsyncSmtpTransport, Tokio1Executor};
-
-    let email = lettre::Message::builder()
-        .from("NoBody <nobody@domain.tld>".parse().unwrap())
-        .reply_to("Yuin <yuin@domain.tld>".parse().unwrap())
-        .to("Hei <hei@domain.tld>".parse().unwrap())
-        .subject("Happy new year")
-        .header(lettre::message::header::ContentType::TEXT_PLAIN)
-        .body(String::from("Be happy!"))
-        .unwrap();
-
-    let creds = Credentials::new("username".to_owned(), "password".to_owned());
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay("localhost")
-        .unwrap()
-        .credentials(creds)
-        .port(3143)
-        .build();
-
-    mailer.send(email).await.unwrap();
-}
 
 #[tokio::test]
 async fn connection_should_send_message_to_callback() {
@@ -50,20 +26,65 @@ async fn connection_should_send_message_to_callback() {
     send_test_email().await;
 
     // Assert
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    wait_until_callback_is_called(&app.mock_server).await;
+}
+
+async fn send_test_email() {
+    use lettre::{
+        transport::smtp::{authentication::Credentials, client::Tls},
+        AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
+    };
+
+    let email = lettre::Message::builder()
+        .from("NoBody <nobody@domain.tld>".parse().unwrap())
+        .reply_to("Yuin <yuin@domain.tld>".parse().unwrap())
+        .to("Test <username@example.com>".parse().unwrap())
+        .subject("Happy new year")
+        .header(lettre::message::header::ContentType::TEXT_PLAIN)
+        .body(String::from("Be happy!"))
+        .unwrap();
+
+    let creds = Credentials::new("username".to_owned(), "password".to_owned());
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay("localhost")
+        .unwrap()
+        .credentials(creds)
+        .tls(Tls::None)
+        .port(3025)
+        .build();
+
+    mailer.send(email).await.unwrap();
 }
 
 async fn wait_until_running(app: &TestApp, id: &str) {
+    let mut last_state = None;
+
     for _ in 0..5 {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         let connection = get_connection(&app, id).await;
-        match connection["status"].as_str() {
+
+        tracing::info!("Connection state: {:?}", connection);
+
+        let state = connection["state"]["type"].as_str();
+        match state {
             Some("running") => return,
             Some("stopped") => panic!("Connection stopped running."),
             Some("failed") => panic!("Connection failed to start."),
             _ => {}
         }
+
+        last_state = state.map(|v| v.to_string());
     }
 
-    panic!("Connection did not start running. Make sure the IMAP server is running and the connection settings are correct.");
+    panic!("Connection did not start running. Make sure the IMAP server is running and the connection settings are correct. Last state: {last_state:?}");
+}
+
+async fn wait_until_callback_is_called(mock_server: &MockServer) {
+    for _ in 0..5 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let requests = mock_server.received_requests().await.unwrap();
+        if requests.len() > 0 {
+            return;
+        }
+    }
 }

@@ -16,12 +16,11 @@ use wiremock::MockServer;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
-    let default_filter_level = "info".to_string();
     if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber(default_filter_level, std::io::stdout);
+        let subscriber = get_subscriber("debug".to_string(), std::io::stdout);
         init_subscriber(subscriber);
     } else {
-        let subscriber = get_subscriber(default_filter_level, std::io::sink);
+        let subscriber = get_subscriber("info".to_string(), std::io::sink);
         init_subscriber(subscriber);
     };
 });
@@ -68,6 +67,11 @@ pub async fn spawn_app_with_settings() -> TestApp {
         anchor,
         settings: settings.clone(),
     });
+
+    {
+        let mut background_lock = state.background_pool.lock().await;
+        background_lock.spawn(&state);
+    }
 
     let server = run(listener, Arc::clone(&state))
         .await

@@ -13,12 +13,12 @@ pub async fn create_connection(app: &TestApp, connection: serde_json::Value) -> 
 
     assert_eq!(response.status().as_u16(), 200);
 
-    let mut connection = response
+    let connection = response
         .json::<serde_json::Value>()
         .await
         .expect("Failed to parse response.");
 
-    connection["connection"].take()
+    connection
 }
 
 pub async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
@@ -31,12 +31,12 @@ pub async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
 
     assert_eq!(response.status().as_u16(), 200);
 
-    let mut connection = response
+    let connection = response
         .json::<serde_json::Value>()
         .await
         .expect("Failed to parse response.");
 
-    connection["connection"].take()
+    connection
 }
 
 pub fn new_connection(name: &str) -> serde_json::Value {
@@ -152,7 +152,7 @@ async fn get_connection_returns_200_for_existing_connection() {
     let existing_connection = get_connection(&app, "test").await;
 
     // Assert
-    assert_eq!(existing_connection, connection);
+    assert_eq!(existing_connection["connection"], connection["connection"]);
 }
 
 #[tokio::test]
@@ -190,7 +190,7 @@ async fn update_connection_changes_the_existing_connection() {
 
     // Assert
     assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(updated_connection["mailbox"], "TRASH");
+    assert_eq!(updated_connection["connection"]["mailbox"], "TRASH");
 }
 
 #[tokio::test]
