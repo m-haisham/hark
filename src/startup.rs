@@ -8,7 +8,9 @@ use tokio::{net::TcpListener, signal};
 use tower_http::trace::TraceLayer;
 
 use crate::{
+    anchor::Anchor,
     routes::{connection, health_check},
+    settings::AnchorSettings,
     state::AppState,
     tracing::RequestSpan,
 };

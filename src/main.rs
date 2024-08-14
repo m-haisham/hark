@@ -5,7 +5,7 @@ use hark::{
     anchor::Anchor,
     background::BackgroundPool,
     connection::ConnectionPool,
-    settings::{self},
+    settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
     state::AppState,
 };
@@ -17,7 +17,20 @@ async fn main() -> anyhow::Result<()> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
-    let settings = settings::get_config("config.toml").expect("Failed to read config");
+    let mut settings = settings::get_config("config.toml").expect("Failed to read config");
+    let anchor = create_anchor(settings.anchor.clone()).await;
+
+    // Merge the fetched connections with the existing ones
+    if let Some(response) = anchor
+        .fetch()
+        .await
+        .expect("Failed to fetch initialization data")
+    {
+        tracing::info!("Fetched response: {:?}", response);
+        for (id, connection) in response.connections {
+            settings.connections.insert(id, connection);
+        }
+    }
 
     let background_pool = BackgroundPool::new();
 
@@ -30,15 +43,6 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to bind to the tcp stream");
-
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("Failed to build reqwest client");
-
-    let anchor = Anchor::new_with_ping(client.clone(), settings.anchor.clone())
-        .await
-        .expect("Failed to ping the anchor");
 
     let state = Arc::new(AppState {
         connection_pool: Mutex::new(connection_pool),
@@ -73,4 +77,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn create_anchor(anchor_settings: AnchorSettings) -> Anchor {
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("Failed to build reqwest client");
+
+    let anchor = Anchor::new_with_ping(client.clone(), anchor_settings)
+        .await
+        .expect("Failed to ping the anchor");
+
+    anchor
 }
