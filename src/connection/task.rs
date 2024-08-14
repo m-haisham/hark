@@ -225,6 +225,11 @@ where
         .await
         .context("Failed to start listening to IMAP server")?;
 
+    let expires_at = match connection.auth {
+        ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
+        ConnectionAuth::Password { .. } => None,
+    };
+
     loop {
         let mut idle = session.idle();
         idle.init().await.context("Failed to initialise IDLE")?;
@@ -236,12 +241,13 @@ where
         let response_result = tokio::select! {
             result = idle_wait => result,
             _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
+            _ = terminate_on_expired(expires_at) => return Err(IdleError::Expired),
         };
-
-        tracing::debug!("Received IDLE response: {:?}", response_result);
 
         let response = match response_result {
             Ok(response) => response,
+            // If its an IO error and the error message contains "DONE", it means the connection
+            // was terminated by the server when access token expired or revoked
             Err(async_imap::error::Error::Io(e)) if e.to_string().contains("DONE") => {
                 tracing::warn!("Connection terminated after IDLE DONE");
                 return Err(IdleError::Expired);
@@ -283,8 +289,8 @@ async fn drop_interrupt_when_stopped(
 ) {
     loop {
         let stop = {
-            let state = state.lock().await;
-            state.stop
+            let lock = state.lock().await;
+            lock.stop
         };
 
         if stop {
