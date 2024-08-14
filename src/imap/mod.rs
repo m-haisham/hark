@@ -6,7 +6,7 @@ use async_native_tls::TlsStream;
 use futures::StreamExt;
 use oauth2::AccessToken;
 use secrecy::{ExposeSecret, Secret};
-use std::{fmt::Debug, string::FromUtf8Error};
+use std::fmt::Debug;
 
 use async_imap::{
     extensions::idle::{self, IdleResponse},
@@ -198,7 +198,7 @@ where
 }
 
 #[tracing::instrument(skip_all)]
-async fn check_capability<T>(
+pub async fn check_capability<T>(
     session: &mut Session<T>,
     capability: Capability,
 ) -> Result<(), ImapError>
@@ -228,12 +228,6 @@ pub struct ImapListen {
 pub enum ImapListenError {
     #[error("{0}")]
     Imap(#[from] async_imap::error::Error),
-
-    #[error("{0}")]
-    FromUtf8Error(#[from] FromUtf8Error),
-
-    #[error("{0}")]
-    DateError(#[from] chrono::ParseError),
 
     #[error("Imap server idle send 'EXIT'")]
     Exit,

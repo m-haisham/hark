@@ -9,18 +9,18 @@ use crate::{
 
 use super::command::BackgroundCommand;
 
-#[tracing::instrument(name = "Background Worker", skip_all, fields(task_id = %task_id))]
+#[tracing::instrument(name = "Background Worker", skip_all, fields(id = %id))]
 pub async fn background_worker(
-    task_id: TaskId,
+    id: TaskId,
     state: ArcAppState,
     receiver: async_channel::Receiver<BackgroundCommand>,
 ) {
-    let result = background_worker_inner(task_id, Arc::clone(&state), receiver).await;
+    let result = background_worker_inner(id, Arc::clone(&state), receiver).await;
     if let Err(err) = result {
-        tracing::error!("Background worker {} failed: {:?}", task_id, err);
+        tracing::error!("Background worker {} failed: {:?}", id, err);
     }
 
-    tracing::info!("Background worker {} stopped", task_id);
+    tracing::info!("Background worker {} stopped", id);
 }
 
 pub async fn background_worker_inner(
@@ -29,7 +29,7 @@ pub async fn background_worker_inner(
     receiver: async_channel::Receiver<BackgroundCommand>,
 ) -> anyhow::Result<()> {
     loop {
-        tracing::debug!("Background worker {{{task_id}}} waiting for command");
+        tracing::debug!("Background worker {task_id} waiting for command");
 
         let command_result = receiver.recv().await;
         let command = match command_result {

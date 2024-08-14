@@ -21,7 +21,7 @@ use crate::{
     connection::types::{ConnectionEvent, ConnectionEventKind, OAuth2},
     imap::{
         handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
-        ImapAuth, ImapConnectionConfig, ImapListenConfig,
+        ImapAuth, ImapConnectionConfig, ImapListenConfig, ImapListenError,
     },
 };
 
@@ -221,17 +221,22 @@ where
             _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
         };
 
+        tracing::debug!("Received IDLE response: {:?}", response_result);
+
         let response = match response_result {
             Ok(response) => response,
             Err(async_imap::error::Error::Io(e)) if e.to_string().contains("DONE") => {
-                return Err(IdleError::Expired)
+                tracing::warn!("Connection terminated after IDLE DONE");
+                return Err(IdleError::Expired);
             }
             Err(e) => return Err(IdleError::Other(e.into())),
         };
 
-        let (idle, result) = handle_idle_response(idle, response)
-            .await
-            .context("Failed to handle IDLE response")?;
+        let (idle, result) = match handle_idle_response(idle, response).await {
+            Ok(v) => v,
+            Err(ImapListenError::Exit) => break,
+            Err(ImapListenError::Imap(e)) => return Err(IdleError::Other(e.into())),
+        };
 
         session = idle.done().await.context("Failed to complete IDLE")?;
 
