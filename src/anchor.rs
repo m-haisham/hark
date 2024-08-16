@@ -38,15 +38,6 @@ impl Anchor {
         Self { client, settings }
     }
 
-    pub async fn new_with_ping(
-        client: reqwest::Client,
-        settings: AnchorSettings,
-    ) -> anyhow::Result<Self> {
-        let anchor = Self { client, settings };
-        anchor.ping().await?;
-        Ok(anchor)
-    }
-
     pub async fn send(&self, request: CallbackRequest) -> anyhow::Result<()> {
         let id = match &request {
             CallbackRequest::MessageReceived { connection_id, .. } => Some(connection_id.clone()),

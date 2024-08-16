@@ -85,9 +85,16 @@ async fn create_anchor(anchor_settings: AnchorSettings) -> Anchor {
         .build()
         .expect("Failed to build reqwest client");
 
-    let anchor = Anchor::new_with_ping(client.clone(), anchor_settings)
-        .await
-        .expect("Failed to ping the anchor");
+    // Copy the ping setting
+    let ping = anchor_settings.ping;
+    let anchor = Anchor::new(client.clone(), anchor_settings);
+
+    if ping {
+        anchor
+            .ping()
+            .await
+            .expect("Failed to ping the callback URL");
+    }
 
     anchor
 }

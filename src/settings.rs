@@ -33,15 +33,23 @@ pub struct ServerSettings {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct AnchorSettings {
+    #[serde(default)]
     pub fetch_url: Option<Url>,
+    #[serde(default = "default_callback_url")]
     pub callback_url: Url,
+    pub ping: bool,
 }
 
 impl Default for AnchorSettings {
     fn default() -> Self {
         AnchorSettings {
             fetch_url: None,
-            callback_url: Url::parse("http://localhost:8080").unwrap(),
+            callback_url: default_callback_url(),
+            ping: true,
         }
     }
+}
+
+fn default_callback_url() -> Url {
+    Url::parse("http://localhost:8080").unwrap()
 }
