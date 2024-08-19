@@ -130,6 +130,7 @@ pub struct ConnectionEvent {
 
 #[derive(Debug)]
 pub enum ConnectionEventKind {
+    Starting,
     Started,
     Stopped,
     Failed(String),

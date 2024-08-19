@@ -42,6 +42,13 @@ pub async fn background_worker_inner(
 
         match command {
             BackgroundCommand::ConnectionEvent(ConnectionEvent { id, event }) => match event {
+                ConnectionEventKind::Starting => {
+                    tracing::debug!("Marking connection {} as starting", id);
+                    let _ = state
+                        .anchor
+                        .send(CallbackRequest::ConnectionStarting { connection_id: id })
+                        .await;
+                }
                 ConnectionEventKind::Started => {
                     tracing::debug!("Marking connection {} as started", id);
 

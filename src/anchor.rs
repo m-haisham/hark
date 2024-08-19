@@ -18,6 +18,9 @@ pub enum CallbackRequest {
         connection_id: ConnectionId,
         message: Message,
     },
+    ConnectionStarting {
+        connection_id: ConnectionId,
+    },
     ConnectionRunning {
         connection_id: ConnectionId,
     },
@@ -51,6 +54,7 @@ impl Anchor {
     pub async fn send(&self, request: CallbackRequest) -> anyhow::Result<()> {
         let id = match &request {
             CallbackRequest::MessageReceived { connection_id, .. } => Some(connection_id.clone()),
+            CallbackRequest::ConnectionStarting { connection_id } => Some(connection_id.clone()),
             CallbackRequest::ConnectionRunning { connection_id } => Some(connection_id.clone()),
             CallbackRequest::ConnectionStopped { connection_id } => Some(connection_id.clone()),
             CallbackRequest::ConnectionFailed { connection_id, .. } => Some(connection_id.clone()),

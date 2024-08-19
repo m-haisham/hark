@@ -89,6 +89,14 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         background,
     } = task;
 
+    background
+        .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+            id: id.clone(),
+            event: ConnectionEventKind::Starting,
+        }))
+        .await
+        .context("Failed to send starting event to background task")?;
+
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
