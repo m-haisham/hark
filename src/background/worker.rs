@@ -44,25 +44,41 @@ pub async fn background_worker_inner(
             BackgroundCommand::ConnectionEvent(ConnectionEvent { id, event }) => match event {
                 ConnectionEventKind::Started => {
                     tracing::debug!("Marking connection {} as started", id);
-                    let mut lock = state.connection_pool.lock().await;
-                    let Some(connection) = lock.get_connection_mut(&id) else {
-                        tracing::warn!("Connection {} not found", id);
-                        continue;
-                    };
 
-                    connection.state = ConnectionState::Running;
-                    tracing::info!("Connection {} started", id);
+                    {
+                        let mut lock = state.connection_pool.lock().await;
+                        let Some(connection) = lock.get_connection_mut(&id) else {
+                            tracing::warn!("Connection {} not found", id);
+                            continue;
+                        };
+
+                        connection.state = ConnectionState::Running;
+                        tracing::info!("Connection {} started", id);
+                    }
+
+                    let _ = state
+                        .anchor
+                        .send(CallbackRequest::ConnectionRunning { connection_id: id })
+                        .await;
                 }
                 ConnectionEventKind::Stopped => {
                     tracing::debug!("Marking connection {} as stopped", id);
-                    let mut lock = state.connection_pool.lock().await;
-                    let Some(connection) = lock.get_connection_mut(&id) else {
-                        tracing::warn!("Connection {} not found", id);
-                        continue;
-                    };
 
-                    connection.state = ConnectionState::Stopped;
-                    tracing::info!("Connection {} stopped", id);
+                    {
+                        let mut lock = state.connection_pool.lock().await;
+                        let Some(connection) = lock.get_connection_mut(&id) else {
+                            tracing::warn!("Connection {} not found", id);
+                            continue;
+                        };
+
+                        connection.state = ConnectionState::Stopped;
+                        tracing::info!("Connection {} stopped", id);
+                    }
+
+                    let _ = state
+                        .anchor
+                        .send(CallbackRequest::ConnectionStopped { connection_id: id })
+                        .await;
                 }
                 ConnectionEventKind::Updated(connection) => {
                     tracing::debug!("Updating connection {}", id);
@@ -77,13 +93,24 @@ pub async fn background_worker_inner(
                 }
                 ConnectionEventKind::Failed(error) => {
                     tracing::debug!("Marking connection {} as failed", id);
-                    let mut lock = state.connection_pool.lock().await;
-                    let Some(connection) = lock.get_connection_mut(&id) else {
-                        tracing::warn!("Connection {} not found", id);
-                        continue;
-                    };
 
-                    connection.state = ConnectionState::Failed(error);
+                    {
+                        let mut lock = state.connection_pool.lock().await;
+                        let Some(connection) = lock.get_connection_mut(&id) else {
+                            tracing::warn!("Connection {} not found", id);
+                            continue;
+                        };
+
+                        connection.state = ConnectionState::Failed(error.clone());
+                    }
+
+                    let _ = state
+                        .anchor
+                        .send(CallbackRequest::ConnectionFailed {
+                            connection_id: id,
+                            error,
+                        })
+                        .await;
                 }
                 ConnectionEventKind::MessageReceived(message) => {
                     tracing::debug!("Received message for connection {}", id);
@@ -98,12 +125,13 @@ pub async fn background_worker_inner(
 
                     tracing::debug!("Sending message to callback URL for connection {}", id);
 
-                    let request = CallbackRequest::MessageReceived {
-                        connection_id: id.clone(),
-                        message,
-                    };
-
-                    let _ = state.anchor.send(request).await;
+                    let _ = state
+                        .anchor
+                        .send(CallbackRequest::MessageReceived {
+                            connection_id: id.clone(),
+                            message,
+                        })
+                        .await;
                 }
             },
             BackgroundCommand::Stop => {
