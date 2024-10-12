@@ -280,7 +280,7 @@ where
         let (idle, result) = match handle_idle_response(idle, response).await {
             Ok(v) => v,
             Err(ImapListenError::Exit) => break,
-            Err(ImapListenError::Imap(e)) => return Err(IdleError::Other(e.into())),
+            Err(ImapListenError::Imap(e)) => return Err(IdleError::Other(eyre!(e))),
         };
 
         session = idle
