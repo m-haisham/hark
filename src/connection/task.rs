@@ -128,13 +128,19 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         },
     };
 
+    let mut flavour = connection.flavour;
+    if flavour.is_none() {
+        flavour = ImapFlavour::from_host(&connection.host);
+        if let Some(flavour) = flavour.as_ref() {
+            tracing::debug!("Detected IMAP flavour: {:?}", flavour);
+        }
+    }
+
     let imap_connection = ImapConnectionConfig {
         host: connection.host.clone(),
         port: connection.port,
         auth,
-        flavour: connection
-            .flavour
-            .or_else(|| ImapFlavour::from_host(&connection.host)),
+        flavour,
     };
 
     loop {

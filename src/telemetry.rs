@@ -13,7 +13,11 @@ where
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
     let formatting_layer = fmt::layer().with_writer(sink);
-    Registry::default().with(env_filter).with(formatting_layer)
+
+    Registry::default()
+        .with(env_filter)
+        .with(formatting_layer)
+        .with(tracing_error::ErrorLayer::default())
 }
 
 pub fn init_subscriber(subscriber: impl Subscriber + Sync + Send) {

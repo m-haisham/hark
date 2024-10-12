@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use color_eyre::config::{HookBuilder, Theme};
 use futures::lock::Mutex;
 use hark::{
     anchor::Anchor,
@@ -8,14 +9,19 @@ use hark::{
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
     state::AppState,
+    telemetry::{get_subscriber, init_subscriber},
 };
 use tokio::net::TcpListener;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO"));
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    HookBuilder::default()
+        .theme(Theme::new())
+        .install()
+        .expect("Failed to install color_eyre hook");
+
+    let subscriber = get_subscriber("INFO".into(), std::io::stdout);
+    init_subscriber(subscriber);
 
     let mut settings = settings::get_config("config.toml").expect("Failed to read config");
     let anchor = create_anchor(settings.anchor.clone()).await;
