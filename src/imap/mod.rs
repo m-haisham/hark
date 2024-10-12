@@ -69,6 +69,7 @@ struct XOAuth2Authenticator<'a> {
 
 impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
     type Response = String;
+
     fn process(&mut self, _: &[u8]) -> Self::Response {
         format!(
             "user={}\x01auth=Bearer {}\x01\x01",

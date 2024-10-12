@@ -18,7 +18,7 @@ use tracing::instrument;
 
 use crate::{
     background::command::BackgroundCommand,
-    connection::types::{ConnectionEvent, ConnectionEventKind, OAuth2},
+    connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
     imap::{
         handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
         ImapAuth, ImapConnectionConfig, ImapListenConfig, ImapListenError,
@@ -131,7 +131,9 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
         host: connection.host.clone(),
         port: connection.port,
         auth,
-        flavour: connection.flavour,
+        flavour: connection
+            .flavour
+            .or_else(|| ImapFlavour::from_host(&connection.host)),
     };
 
     loop {

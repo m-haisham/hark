@@ -1,3 +1,4 @@
+mod flavour;
 mod handle;
 
 use chrono::{DateTime, Utc};
@@ -6,6 +7,7 @@ use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
+pub use flavour::ImapFlavour;
 pub use handle::ConnectionHandle;
 
 use crate::imap::types::Message;
@@ -90,20 +92,6 @@ pub struct OAuth2Config {
     pub auth_uri: AuthUrl,
     pub token_uri: TokenUrl,
     pub scope: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-pub enum ImapFlavour {
-    Gmail,
-}
-
-impl Display for ImapFlavour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ImapFlavour::Gmail => write!(f, "google"),
-        }
-    }
 }
 
 #[derive(Serialize, Debug, Clone)]
