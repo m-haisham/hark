@@ -3,11 +3,11 @@ use crate::{
     response::ResponseError,
     state::ArcAppState,
 };
-use anyhow::{anyhow, Context};
 use axum::{
     extract::{Path, State},
     Json,
 };
+use eyre::eyre;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -37,14 +37,14 @@ pub async fn create_connection(
 
     let NewConnection { name, connection } = data;
     let id = ConnectionId::try_from(name)
-        .map_err(|e| ResponseError::BadRequest(anyhow!(e), e.to_string()))?;
+        .map_err(|e| ResponseError::BadRequest(eyre!(e), e.to_string()))?;
 
     connection_lock.spawn(id.clone(), connection, background_lock.sender());
 
     let connection = connection_lock
         .get_connection(&id)
         .cloned()
-        .context("Failed to get connection from pool")?;
+        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
 }
@@ -69,7 +69,7 @@ pub async fn get_connection(
     match lock.get_connection(&id) {
         Some(connection) => Ok(Json(connection.clone())),
         None => Err(ResponseError::NotFound(
-            anyhow!("Connection not found: {id}"),
+            eyre!("Connection not found: {id}"),
             id.to_string(),
         )),
     }
@@ -100,7 +100,7 @@ pub async fn update_connection(
     let connection = connection_lock
         .get_connection(&id)
         .cloned()
-        .context("Failed to get connection from pool")?;
+        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
 }
@@ -121,7 +121,7 @@ async fn delete_connection_inner(
 
     let Some(mut connection) = lock.remove_connection(&id) else {
         return Err(ResponseError::NotFound(
-            anyhow!("Connection not found: {id}"),
+            eyre!("Connection not found: {id}"),
             "Connection not found".to_string(),
         ));
     };

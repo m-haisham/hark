@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::Context;
+use eyre::{eyre, Context};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,7 @@ impl Anchor {
         Self { client, settings }
     }
 
-    pub async fn send(&self, request: CallbackRequest) -> anyhow::Result<()> {
+    pub async fn send(&self, request: CallbackRequest) -> eyre::Result<()> {
         let id = match &request {
             CallbackRequest::MessageReceived { connection_id, .. } => Some(connection_id.clone()),
             CallbackRequest::ConnectionStarting { connection_id } => Some(connection_id.clone()),
@@ -71,7 +71,7 @@ impl Anchor {
                     response.status(),
                 );
 
-                Err(anyhow::anyhow!(
+                Err(eyre::eyre!(
                     "The server replied with unexpected status code (connection={id:?}): {}",
                     response.status(),
                 ))
@@ -85,12 +85,12 @@ impl Anchor {
                     "Failed to send message to callback URL (connection={id:?}): {e:?}",
                 );
 
-                Err(e).context("Failed to send message to callback URL")
+                Err(eyre!(e)).wrap_err("Failed to send message to callback URL")
             }
         }
     }
 
-    pub async fn fetch(&self) -> anyhow::Result<Option<FetchResponse>> {
+    pub async fn fetch(&self) -> eyre::Result<Option<FetchResponse>> {
         let Some(fetch_url) = &self.settings.fetch_url else {
             return Ok(None);
         };
@@ -100,7 +100,8 @@ impl Anchor {
             .get(fetch_url.as_str())
             .send()
             .await
-            .context("Failed to fetch connections")?;
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to fetch connections")?;
 
         if response.status() != StatusCode::OK {
             tracing::warn!(
@@ -108,7 +109,7 @@ impl Anchor {
                 response.status(),
             );
 
-            return Err(anyhow::anyhow!(
+            return Err(eyre::eyre!(
                 "The server replied with unexpected status code: {}",
                 response.status(),
             ));
@@ -117,12 +118,13 @@ impl Anchor {
         let response = response
             .json::<FetchResponse>()
             .await
-            .context("Failed to parse response")?;
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to parse response")?;
 
         Ok(Some(response))
     }
 
-    pub async fn ping(&self) -> anyhow::Result<()> {
+    pub async fn ping(&self) -> eyre::Result<()> {
         tracing::info!("Pinging the anchor...");
         self.send(CallbackRequest::Ping).await?;
         Ok(())

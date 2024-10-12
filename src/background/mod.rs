@@ -2,7 +2,7 @@ pub mod command;
 pub mod worker;
 
 use crate::{state::ArcAppState, task::TaskId};
-use anyhow::Context;
+use eyre::Context;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use worker::background_worker;
@@ -42,22 +42,26 @@ impl BackgroundPool {
         self.sender.clone()
     }
 
-    pub async fn stop_all(&mut self) -> anyhow::Result<()> {
+    pub async fn stop_all(&mut self) -> eyre::Result<()> {
         tracing::debug!("Sending stop command to all background workers");
 
         for _ in 0..self.workers.len() {
             self.sender
                 .send(command::BackgroundCommand::Stop)
                 .await
-                .context("Failed to send stop command")?;
+                .map_err(|e| eyre::eyre!(e))
+                .wrap_err("Failed to send stop command")?;
         }
 
         Ok(())
     }
 
-    pub async fn join_all(&mut self) -> anyhow::Result<()> {
+    pub async fn join_all(&mut self) -> eyre::Result<()> {
         for worker in self.workers.drain(..) {
-            worker.await.context("Failed to join background worker")?;
+            worker
+                .await
+                .map_err(|e| eyre::eyre!(e))
+                .wrap_err("Failed to join background worker")?;
         }
 
         Ok(())

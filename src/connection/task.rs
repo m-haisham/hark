@@ -4,9 +4,9 @@ use std::{
     time::{self, Duration},
 };
 
-use anyhow::Context;
 use async_imap::Session;
 use chrono::{DateTime, TimeDelta, Utc};
+use eyre::{eyre, Context};
 use futures::lock::Mutex;
 use oauth2::TokenResponse;
 use stop_token::StopSource;
@@ -81,7 +81,7 @@ pub async fn run_connection_task(task: ConnectionTask) {
     }
 }
 
-pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<()> {
+pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()> {
     let ConnectionTask {
         id,
         mut connection,
@@ -95,7 +95,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
             event: ConnectionEventKind::Starting,
         }))
         .await
-        .context("Failed to send starting event to background task")?;
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err("Failed to send starting event to background task")?;
 
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
@@ -145,7 +146,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
 
             let session = imap_connect_tls(&imap_connection)
                 .await
-                .context("Failed to connect to IMAP server")?;
+                .map_err(|e| eyre::eyre!(e))
+                .wrap_err("Failed to connect to IMAP server")?;
 
             background
                 .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
@@ -160,7 +162,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> anyhow::Result<(
 
             let session = imap_connect_tcp(&imap_connection)
                 .await
-                .context("Failed to connect to IMAP server")?;
+                .map_err(|e| eyre::eyre!(e))
+                .wrap_err("Failed to connect to IMAP server")?;
 
             background
                 .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
@@ -213,7 +216,7 @@ pub enum IdleError {
     #[error("Connection terminated after access token expired or revoked")]
     Expired,
     #[error("{0}")]
-    Other(#[from] anyhow::Error),
+    Other(#[from] eyre::Error),
 }
 
 async fn idle<T>(
@@ -233,7 +236,8 @@ where
 
     let (mut session, mut listen) = imap_listen(session, listen_config)
         .await
-        .context("Failed to start listening to IMAP server")?;
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err("Failed to start listening to IMAP server")?;
 
     let expires_at = match connection.auth {
         ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
@@ -242,7 +246,10 @@ where
 
     loop {
         let mut idle = session.idle();
-        idle.init().await.context("Failed to initialise IDLE")?;
+        idle.init()
+            .await
+            .map_err(|e| eyre::eyre!(e))
+            .wrap_err("Failed to initialise IDLE")?;
 
         let (idle_wait, interrupt) = idle.wait();
 
@@ -270,11 +277,16 @@ where
             Err(ImapListenError::Imap(e)) => return Err(IdleError::Other(e.into())),
         };
 
-        session = idle.done().await.context("Failed to complete IDLE")?;
+        session = idle
+            .done()
+            .await
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to complete IDLE")?;
 
         let messages = handle_idle_event(&mut session, &mut listen, result)
             .await
-            .context("Failed to handle IDLE event")?;
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to handle IDLE event")?;
 
         for message in messages {
             tracing::debug!("Received message: {:?}", message);
@@ -285,7 +297,8 @@ where
                     event: ConnectionEventKind::MessageReceived(message),
                 }))
                 .await
-                .context("Failed to send message to background task")?;
+                .map_err(|e| eyre::eyre!(e))
+                .wrap_err("Failed to send message to background task")?;
         }
     }
 
@@ -342,7 +355,7 @@ async fn terminate_on_expired(expires_at: Option<DateTime<Utc>>) {
 pub async fn refresh_access_token(
     connection_id: &ConnectionId,
     oauth2: OAuth2,
-) -> anyhow::Result<OAuth2> {
+) -> eyre::Result<OAuth2> {
     let OAuth2 {
         refresh_token,
         config,
@@ -365,7 +378,8 @@ pub async fn refresh_access_token(
     let response = request
         .request_async(oauth2::reqwest::async_http_client)
         .await
-        .context("Failed to refresh access token")?;
+        .map_err(|e| eyre!(e))
+        .wrap_err("Failed to refresh access token")?;
 
     let expires_in = response
         .expires_in()

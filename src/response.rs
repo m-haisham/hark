@@ -5,13 +5,13 @@ use axum::Json;
 #[derive(Debug, thiserror::Error)]
 pub enum ResponseError {
     #[error("{1}")]
-    BadRequest(#[source] anyhow::Error, String),
+    BadRequest(#[source] eyre::Error, String),
 
     #[error("{1}")]
-    NotFound(#[source] anyhow::Error, String),
+    NotFound(#[source] eyre::Error, String),
 
     #[error("Something went wrong.")]
-    ServerError(#[from] anyhow::Error),
+    ServerError(#[from] eyre::Error),
 }
 
 #[derive(Debug, serde::Serialize)]

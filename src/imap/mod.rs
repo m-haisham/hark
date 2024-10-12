@@ -1,8 +1,8 @@
 mod body;
 pub mod types;
 
-use anyhow::Context;
 use async_native_tls::TlsStream;
+use eyre::{eyre, Context};
 use futures::StreamExt;
 use oauth2::AccessToken;
 use secrecy::{ExposeSecret, Secret};
@@ -85,18 +85,22 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
 )]
 pub async fn imap_connect_tls(
     config: &ImapConnectionConfig,
-) -> anyhow::Result<Session<TlsStream<TcpStream>>> {
+) -> eyre::Result<Session<TlsStream<TcpStream>>> {
     let addr = (config.host.as_str(), config.port);
-    let stream = TcpStream::connect(addr).await.with_context(|| {
-        format!(
-            "Failed to connect to IMAP server at {}:{}",
-            config.host, config.port
-        )
-    })?;
+    let stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err_with(|| {
+            format!(
+                "Failed to connect to IMAP server at {}:{}",
+                config.host, config.port
+            )
+        })?;
 
     let stream = async_native_tls::connect(&config.host, stream)
         .await
-        .with_context(|| {
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err_with(|| {
             format!(
                 "Failed to establish TLS connection to IMAP server at {}:{}",
                 config.host, config.port
@@ -107,7 +111,8 @@ pub async fn imap_connect_tls(
 
     imap_auth(client, &config.auth)
         .await
-        .context("Failed to authenticate with IMAP server")
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err("Failed to authenticate with IMAP server")
 }
 
 #[tracing::instrument(
@@ -115,20 +120,24 @@ pub async fn imap_connect_tls(
     skip(config),
     fields(host = %config.host.as_str(), port = %config.port)
 )]
-pub async fn imap_connect_tcp(config: &ImapConnectionConfig) -> anyhow::Result<Session<TcpStream>> {
+pub async fn imap_connect_tcp(config: &ImapConnectionConfig) -> eyre::Result<Session<TcpStream>> {
     let addr = (config.host.as_str(), config.port);
-    let stream = TcpStream::connect(addr).await.with_context(|| {
-        format!(
-            "Failed to connect to IMAP server at {}:{}",
-            config.host, config.port
-        )
-    })?;
+    let stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err_with(|| {
+            format!(
+                "Failed to connect to IMAP server at {}:{}",
+                config.host, config.port
+            )
+        })?;
 
     let client = create_client(config, stream).await?;
 
     imap_auth(client, &config.auth)
         .await
-        .context("Failed to authenticate with IMAP server")
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err("Failed to authenticate with IMAP server")
 }
 
 #[tracing::instrument(
@@ -140,7 +149,7 @@ pub async fn imap_connect_tcp(config: &ImapConnectionConfig) -> anyhow::Result<S
         flavour = ?config.flavour
     )
 )]
-async fn create_client<T>(config: &ImapConnectionConfig, stream: T) -> anyhow::Result<Client<T>>
+async fn create_client<T>(config: &ImapConnectionConfig, stream: T) -> eyre::Result<Client<T>>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
@@ -152,8 +161,9 @@ where
         client
             .read_response()
             .await
-            .context("Expected greeting response from gmail IMAP server")?
-            .context("Failed to read response")?;
+            .ok_or_else(|| eyre::eyre!("Failed to read greeting response from gmail IMAP server"))?
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to read response")?;
     }
 
     Ok(client)

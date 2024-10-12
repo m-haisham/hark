@@ -27,7 +27,7 @@ pub async fn background_worker_inner(
     task_id: TaskId,
     state: ArcAppState,
     receiver: async_channel::Receiver<BackgroundCommand>,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     loop {
         tracing::debug!("Background worker {task_id} waiting for command");
 
