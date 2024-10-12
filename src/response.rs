@@ -23,11 +23,11 @@ impl IntoResponse for ResponseError {
     fn into_response(self) -> axum::http::Response<axum::body::Body> {
         match self {
             ResponseError::BadRequest(e, message) => {
-                tracing::error!("{:?}", e);
+                tracing::info!("{:?}", e);
                 (StatusCode::BAD_REQUEST, Json(MessageBody { message })).into_response()
             }
             ResponseError::NotFound(e, message) => {
-                tracing::error!("{:?}", e);
+                tracing::info!("{:?}", e);
                 (StatusCode::NOT_FOUND, Json(MessageBody { message })).into_response()
             }
             ResponseError::ServerError(e) => {

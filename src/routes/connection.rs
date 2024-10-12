@@ -70,7 +70,7 @@ pub async fn get_connection(
         Some(connection) => Ok(Json(connection.clone())),
         None => Err(ResponseError::NotFound(
             eyre!("Connection not found: {id}"),
-            id.to_string(),
+            "Connection not found".to_string(),
         )),
     }
 }

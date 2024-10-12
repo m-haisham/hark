@@ -37,6 +37,7 @@ pub struct AnchorSettings {
     pub fetch_url: Option<Url>,
     #[serde(default = "default_callback_url")]
     pub callback_url: Url,
+    #[serde(default)]
     pub ping: bool,
 }
 
