@@ -62,7 +62,13 @@ impl Anchor {
         };
 
         let callback_url = self.settings.callback_url.as_str();
-        let result = self.client.post(callback_url).json(&request).send().await;
+        let mut builder = self.client.post(callback_url).json(&request);
+
+        for (key, value) in &self.settings.headers {
+            builder = builder.header(key, value);
+        }
+
+        let result = builder.send().await;
 
         match result {
             Ok(response) if response.status() != StatusCode::OK => {

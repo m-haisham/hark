@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;
 use url::Url;
@@ -39,6 +39,8 @@ pub struct AnchorSettings {
     pub callback_url: Url,
     #[serde(default)]
     pub ping: bool,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
 }
 
 impl Default for AnchorSettings {
@@ -47,6 +49,7 @@ impl Default for AnchorSettings {
             fetch_url: None,
             callback_url: default_callback_url(),
             ping: true,
+            headers: BTreeMap::new(),
         }
     }
 }
