@@ -187,18 +187,24 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                 break;
             }
             Err(IdleError::Expired) => {
-                tracing::info!("Connection task expired, reconnecting");
+                tracing::info!(
+                    "Connection task terminated due to expired access token, refreshing token."
+                );
 
                 if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
                     connection.auth =
                         ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
                 }
             }
-            Err(err) => {
-                tracing::error!("Connection task failed: {:?}", err);
+            Err(e) => {
+                tracing::error!("Retrying failed connection with error: {:?}", e);
                 // TODO: Add retry with backoff strategy, e.g.:
                 // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
-                break;
+
+                if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
+                    connection.auth =
+                        ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+                }
             }
         }
     }
@@ -270,17 +276,17 @@ where
             Ok(response) => response,
             // If its an IO error and the error message contains "DONE", it means the connection
             // was terminated by the server when access token expired or revoked
-            Err(async_imap::error::Error::Io(e)) if e.to_string().contains("DONE") => {
-                tracing::warn!("Connection terminated after IDLE DONE");
-                return Err(IdleError::Expired);
-            }
-            Err(e) => return Err(IdleError::Other(e.into())),
+            Err(e) => return Err(IdleError::Other(eyre!(e).wrap_err("Error during IDLE"))),
         };
 
         let (idle, result) = match handle_idle_response(idle, response).await {
             Ok(v) => v,
             Err(ImapListenError::Exit) => break,
-            Err(ImapListenError::Imap(e)) => return Err(IdleError::Other(eyre!(e))),
+            Err(ImapListenError::Imap(e)) => {
+                return Err(IdleError::Other(
+                    eyre!(e).wrap_err("Error while handling response"),
+                ))
+            }
         };
 
         session = idle
