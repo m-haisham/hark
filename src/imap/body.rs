@@ -6,6 +6,7 @@ use super::types::{
     Addr, Address, Attachment, ContentDisposition, Envelope, Group, Header, Message,
 };
 
+#[tracing::instrument(name = "Parsing email body", skip(raw_body))]
 pub fn parse_body(raw_body: &[u8]) -> Option<Message> {
     let message = MessageParser::default().parse(raw_body)?;
 

@@ -231,6 +231,7 @@ pub enum IdleError {
     Other(#[from] eyre::Error),
 }
 
+#[tracing::instrument(name = "IMAP Idle", skip_all, fields(id = %id))]
 async fn idle<T>(
     id: &ConnectionId,
     connection: Connection,
