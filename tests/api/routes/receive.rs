@@ -42,11 +42,11 @@ async fn send_test_email() {
         .subject("Happy new year")
         .header(lettre::message::header::ContentType::TEXT_PLAIN)
         .body(String::from("Be happy!"))
-        .unwrap();
+        .expect("Failed to create email.");
 
     let creds = Credentials::new("username".to_owned(), "password".to_owned());
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay("localhost")
-        .unwrap()
+        .expect("Failed to create mailer.")
         .credentials(creds)
         .tls(Tls::None)
         .port(3025)
@@ -82,9 +82,15 @@ async fn wait_until_callback_is_called(mock_server: &MockServer) {
     for _ in 0..5 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-        let requests = mock_server.received_requests().await.unwrap();
-        if requests.len() > 0 {
+        let requests = mock_server
+            .received_requests()
+            .await
+            .expect("Failed to get requests.");
+
+        if requests.len() > 2 {
             return;
         }
     }
+
+    panic!("Callback was not called.");
 }
