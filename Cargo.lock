@@ -888,7 +888,6 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "stop-token",
  "thiserror",
  "tokio",
  "tower-http",
