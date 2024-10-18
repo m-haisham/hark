@@ -32,13 +32,12 @@ pub async fn create_connection(
     State(state): State<ArcAppState>,
     Json(data): Json<NewConnection>,
 ) -> Result<Json<ConnectionHandle>, ResponseError> {
-    let mut connection_lock = state.connection_pool.lock().await;
-    let background_lock = state.background_pool.lock().await;
-
     let NewConnection { name, connection } = data;
     let id = ConnectionId::try_from(name)
         .map_err(|e| ResponseError::BadRequest(eyre!(e), e.to_string()))?;
 
+    let background_lock = state.background_pool.lock().await;
+    let mut connection_lock = state.connection_pool.lock().await;
     connection_lock.spawn(id.clone(), connection, background_lock.sender());
 
     let connection = connection_lock
