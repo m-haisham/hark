@@ -117,31 +117,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         }
     }
 
-    let auth = match &connection.auth {
-        ConnectionAuth::Password { password } => ImapAuth::LOGIN {
-            username: connection.username.clone(),
-            password: password.clone(),
-        },
-        ConnectionAuth::OAuth2(oauth2) => ImapAuth::XOAUTH2 {
-            username: connection.username.clone(),
-            access_token: oauth2.access_token.clone(),
-        },
-    };
-
-    let mut flavour = connection.flavour;
-    if flavour.is_none() {
-        flavour = ImapFlavour::from_host(&connection.host);
-        if let Some(flavour) = flavour.as_ref() {
-            tracing::debug!("Detected IMAP flavour: {:?}", flavour);
-        }
-    }
-
-    let imap_connection = ImapConnectionConfig {
-        host: connection.host.clone(),
-        port: connection.port,
-        auth,
-        flavour,
-    };
+    let imap_connection = imap_connection_config(&connection).await?;
 
     loop {
         let inner_connection = connection.clone();
@@ -221,6 +197,36 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         .await?;
 
     Ok(())
+}
+
+pub async fn imap_connection_config(connection: &Connection) -> eyre::Result<ImapConnectionConfig> {
+    let auth = match &connection.auth {
+        ConnectionAuth::Password { password } => ImapAuth::LOGIN {
+            username: connection.username.clone(),
+            password: password.clone(),
+        },
+        ConnectionAuth::OAuth2(oauth2) => ImapAuth::XOAUTH2 {
+            username: connection.username.clone(),
+            access_token: oauth2.access_token.clone(),
+        },
+    };
+
+    let mut flavour = connection.flavour;
+    if flavour.is_none() {
+        flavour = ImapFlavour::from_host(&connection.host);
+        if let Some(flavour) = flavour.as_ref() {
+            tracing::debug!("Detected IMAP flavour: {:?}", flavour);
+        }
+    }
+
+    let imap_connection = ImapConnectionConfig {
+        host: connection.host.clone(),
+        port: connection.port,
+        auth,
+        flavour,
+    };
+
+    Ok(imap_connection)
 }
 
 #[derive(Debug, thiserror::Error)]

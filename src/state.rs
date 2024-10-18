@@ -3,7 +3,8 @@ use std::sync::Arc;
 use futures::lock::Mutex;
 
 use crate::{
-    anchor::Anchor, background::BackgroundPool, connection::ConnectionPool, settings::Settings,
+    anchor::Anchor, background::BackgroundPool, connection::pool::ConnectionPool,
+    settings::Settings,
 };
 
 pub type ArcAppState = Arc<AppState>;

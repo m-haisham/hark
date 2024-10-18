@@ -5,7 +5,7 @@ use futures::lock::Mutex;
 use hark::{
     anchor::Anchor,
     background::BackgroundPool,
-    connection::ConnectionPool,
+    connection::pool::ConnectionPool,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
     state::AppState,

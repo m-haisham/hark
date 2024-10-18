@@ -1,87 +1,41 @@
-use std::collections::HashMap;
+use chrono::Utc;
+use eyre::Context;
+use task::{imap_connection_config, refresh_access_token};
+use types::{Connection, ConnectionAuth, ConnectionId};
 
-use tokio::task::JoinHandle;
-use tracing::instrument;
-use types::{Connection, ConnectionCommand, ConnectionHandle, ConnectionId};
+use crate::imap::{imap_connect_tcp, imap_connect_tls};
 
-use crate::background::command::BackgroundCommand;
-
+pub mod pool;
 pub mod task;
 pub mod types;
 
-#[derive(Debug)]
-pub struct ConnectionPool {
-    pool: HashMap<ConnectionId, ConnectionHandle>,
-    handles: HashMap<ConnectionId, JoinHandle<()>>,
-}
-
-impl ConnectionPool {
-    pub fn new() -> Self {
-        Self {
-            pool: HashMap::new(),
-            handles: HashMap::new(),
+pub async fn imap_test_connect(id: ConnectionId, mut connection: Connection) -> eyre::Result<()> {
+    if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
+        // Update the access token if it is about to expire, expired, or expires_at is not provided
+        if (oauth2.expires_at.unwrap_or_else(Utc::now) - Utc::now()).num_seconds() < 60 {
+            connection.auth = ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+        } else {
+            connection.auth = ConnectionAuth::OAuth2(oauth2);
         }
     }
 
-    #[instrument(name = "Spawn Connection Task", skip(self, connection))]
-    pub fn spawn(
-        &mut self,
-        id: ConnectionId,
-        connection: Connection,
-        background: async_channel::Sender<BackgroundCommand>,
-    ) {
-        let (sender, receiver) = tokio::sync::mpsc::channel(20);
+    let imap_connection = imap_connection_config(&connection).await?;
 
-        let task = task::ConnectionTask {
-            id: id.clone(),
-            connection: connection.clone(),
-            receiver,
-            background,
-        };
+    if connection.tls {
+        let mut session = imap_connect_tls(&imap_connection)
+            .await
+            .map_err(|e| eyre::eyre!(e))
+            .wrap_err("Failed to connect to IMAP server")?;
 
-        let handle = ConnectionHandle::new(id.clone(), connection, sender);
-        self.pool.insert(id.clone(), handle);
+        session.close().await?;
+    } else {
+        let mut session = imap_connect_tcp(&imap_connection)
+            .await
+            .map_err(|e| eyre::eyre!(e))
+            .wrap_err("Failed to connect to IMAP server")?;
 
-        let join_handle = tokio::spawn(task::run_connection_task(task));
-        self.handles.insert(id.clone(), join_handle);
-
-        tracing::debug!("Spawned connection task: {:?}", id);
+        session.close().await?;
     }
 
-    pub fn list_connections(&self) -> impl Iterator<Item = (&ConnectionId, &ConnectionHandle)> {
-        self.pool.iter()
-    }
-
-    pub fn get_connection(&self, id: &ConnectionId) -> Option<&ConnectionHandle> {
-        self.pool.get(id)
-    }
-
-    pub fn get_connection_mut(&mut self, id: &ConnectionId) -> Option<&mut ConnectionHandle> {
-        self.pool.get_mut(id)
-    }
-
-    pub fn remove_connection(&mut self, id: &ConnectionId) -> Option<ConnectionHandle> {
-        self.pool.remove(id)
-    }
-
-    pub async fn stop_all(&mut self) {
-        for (_, handle) in self.pool.iter() {
-            let _ = handle.send(ConnectionCommand::Stop).await;
-        }
-    }
-
-    pub async fn join_all(&mut self) {
-        let mut handles = Vec::new();
-        for (_, handle) in self.handles.drain() {
-            handles.push(handle);
-        }
-
-        for handle in handles {
-            let _ = handle.await;
-        }
-    }
-
-    pub async fn remove_join(&mut self, id: &ConnectionId) -> Option<JoinHandle<()>> {
-        self.handles.remove(id)
-    }
+    Ok(())
 }

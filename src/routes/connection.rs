@@ -1,5 +1,8 @@
 use crate::{
-    connection::types::{Connection, ConnectionHandle, ConnectionId},
+    connection::{
+        imap_test_connect,
+        types::{Connection, ConnectionHandle, ConnectionId},
+    },
     response::ResponseError,
     state::ArcAppState,
 };
@@ -46,6 +49,18 @@ pub async fn create_connection(
         .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
+}
+
+pub async fn test_connection(Json(data): Json<NewConnection>) -> Result<Json<()>, ResponseError> {
+    let NewConnection { name, connection } = data;
+    let id = ConnectionId::try_from(name)
+        .map_err(|e| ResponseError::BadRequest(eyre!(e), e.to_string()))?;
+
+    imap_test_connect(id, connection).await.map_err(|e| {
+        ResponseError::BadRequest(e, "Failed to connect to IMAP server".to_string())
+    })?;
+
+    Ok(Json(()))
 }
 
 #[tracing::instrument(name = "List all connections", skip_all)]

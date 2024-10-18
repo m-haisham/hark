@@ -4,7 +4,7 @@ use futures::lock::Mutex;
 use hark::{
     anchor::Anchor,
     background::BackgroundPool,
-    connection::ConnectionPool,
+    connection::pool::ConnectionPool,
     settings::get_config,
     startup::run,
     state::AppState,
