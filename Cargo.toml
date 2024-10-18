@@ -59,7 +59,7 @@ wiremock = "0.6.2"
 
 [profile.release]
 strip = "debuginfo"
-opt-level = "z"
+opt-level = 3
 codegen-units = 1
 panic = "abort"
 lto = true
