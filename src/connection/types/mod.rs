@@ -3,7 +3,7 @@ mod handle;
 
 use chrono::{DateTime, Utc};
 use oauth2::{AccessToken, AuthUrl, ClientId, ClientSecret, RefreshToken, TokenUrl};
-use secrecy::Secret;
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
@@ -68,7 +68,7 @@ pub struct Connection {
 pub enum ConnectionAuth {
     Password {
         #[serde(skip_serializing)]
-        password: Secret<String>,
+        password: SecretString,
     },
     OAuth2(OAuth2),
 }

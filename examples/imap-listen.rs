@@ -8,7 +8,7 @@ use hark::{
     },
 };
 use oauth2::AccessToken;
-use secrecy::Secret;
+use secrecy::SecretString;
 use tracing_subscriber::EnvFilter;
 
 enum Auth {
@@ -53,7 +53,7 @@ async fn main() {
     let auth = match auth {
         Auth::Password => ImapAuth::LOGIN {
             username,
-            password: Secret::new(password),
+            password: SecretString::from(password),
         },
         Auth::OAuth2 => ImapAuth::XOAUTH2 {
             username,

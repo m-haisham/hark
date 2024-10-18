@@ -5,7 +5,7 @@ use async_native_tls::TlsStream;
 use eyre::{eyre, Context};
 use futures::StreamExt;
 use oauth2::AccessToken;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretString};
 use std::fmt::Debug;
 
 use async_imap::{
@@ -36,7 +36,7 @@ pub struct ImapConnectionConfig {
 pub enum ImapAuth {
     LOGIN {
         username: String,
-        password: Secret<String>,
+        password: SecretString,
     },
     XOAUTH2 {
         username: String,
