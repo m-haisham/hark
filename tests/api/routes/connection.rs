@@ -65,6 +65,45 @@ fn update_connection() -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn test_connnection_returns_200_for_valid_data() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let response = app
+        .api_client
+        .post(&format!("{}/test-connection", app.address))
+        .json(&new_connection("test"))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn test_connection_returns_400_for_invalid_data() {
+    // Arrange
+    let app = spawn_app().await;
+
+    let mut connection = new_connection("test");
+    connection["host"] = "".into();
+
+    // Act
+    let response = app
+        .api_client
+        .post(&format!("{}/test-connection", app.address))
+        .json(&connection)
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 400);
+}
+
+#[tokio::test]
 async fn create_connection_returns_400_for_invalid_name() {
     // Arrange
     let app = spawn_app().await;
