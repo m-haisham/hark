@@ -117,11 +117,11 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         }
     }
 
-    let imap_connection = imap_connection_config(&connection).await?;
-
     loop {
         let inner_connection = connection.clone();
         let state = Arc::clone(&state);
+
+        let imap_connection = imap_connection_config(&inner_connection).await?;
 
         let result = if inner_connection.tls {
             tracing::info!("Connecting to IMAP server with TLS");
