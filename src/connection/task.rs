@@ -131,6 +131,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                 .map_err(|e| eyre::eyre!(e))
                 .wrap_err("Failed to connect to IMAP server")?;
 
+            // TODO: handle unsolicited responses
+
             background
                 .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
                     id: id.clone(),
@@ -146,6 +148,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                 .await
                 .map_err(|e| eyre::eyre!(e))
                 .wrap_err("Failed to connect to IMAP server")?;
+
+            // TODO: handle unsolicited responses
 
             background
                 .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
@@ -406,6 +410,10 @@ pub async fn refresh_access_token(
 
     let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in)?
         - chrono::Duration::seconds(60); // subtract 60 seconds to be safe
+
+    // Use the refresh token from the response if provided, otherwise use the existing one
+    // This is to handle the case where the refresh token is rotated
+    let refresh_token = response.refresh_token().cloned().unwrap_or(refresh_token);
 
     let oauth2 = OAuth2 {
         access_token: response.access_token().clone(),
