@@ -3,11 +3,12 @@ use async_native_tls::TlsStream;
 use tokio::net::TcpStream;
 
 use crate::imap::{
-    fetch_seq, imap_connect_tcp, imap_connect_tls, ImapConnectionConfig, MessageParseResult,
+    connect::{imap_connect_tcp, imap_connect_tls, ImapConnectionConfig},
+    fetch_seq, MessageParseResult,
 };
 
-type TcpConnection = TcpStream;
-type TlsConnection = TlsStream<TcpStream>;
+pub type TcpConnection = TcpStream;
+pub type TlsConnection = TlsStream<TcpStream>;
 
 pub enum ImapSession {
     Tcp(Session<TcpConnection>),

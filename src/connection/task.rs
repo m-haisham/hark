@@ -5,7 +5,7 @@ use std::{
 };
 
 use async_imap::Session;
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use eyre::{eyre, Context};
 use futures::lock::Mutex;
 use oauth2::TokenResponse;
@@ -20,8 +20,8 @@ use crate::{
     background::command::BackgroundCommand,
     connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
     imap::{
-        handle_idle_event, handle_idle_response, imap_connect_tcp, imap_connect_tls, imap_listen,
-        ImapAuth, ImapConnectionConfig, ImapListenConfig, ImapListenError,
+        connect::{imap_connect_tcp, imap_connect_tls, ImapAuth, ImapConnectionConfig},
+        handle_idle_event, handle_idle_response, imap_listen, ImapListenConfig, ImapListenError,
     },
 };
 
@@ -255,7 +255,6 @@ where
 {
     let listen_config = ImapListenConfig {
         mailbox: connection.mailbox,
-        lookback_duration: Some(TimeDelta::try_days(30).unwrap()),
     };
 
     let (mut session, mut listen) = imap_listen(session, listen_config)

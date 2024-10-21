@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
-use chrono::Duration;
 use hark::{
     connection::types::ImapFlavour,
     imap::{
-        imap_connect_tls, imap_idle, imap_listen, ImapAuth, ImapConnectionConfig, ImapListenConfig,
+        connect::{imap_connect_tls, ImapAuth, ImapConnectionConfig},
+        imap_idle, imap_listen, ImapListenConfig,
     },
 };
 use oauth2::AccessToken;
@@ -65,7 +65,7 @@ async fn main() {
         host,
         port,
         auth,
-        tls: false,
+        tls: true,
         flavour: Some(ImapFlavour::Gmail),
     };
 
@@ -77,7 +77,6 @@ async fn main() {
 
     let listen_config = ImapListenConfig {
         mailbox: "INBOX".to_string(),
-        lookback_duration: Some(Duration::try_days(30).unwrap()),
     };
 
     let (mut session, mut listen) = imap_listen(session, listen_config).await.unwrap();
