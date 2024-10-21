@@ -1,4 +1,7 @@
-use async_imap::Session;
+use async_imap::{
+    types::{Capabilities, Capability, Mailbox, UnsolicitedResponse},
+    Session,
+};
 use async_native_tls::TlsStream;
 use tokio::net::TcpStream;
 
@@ -25,6 +28,32 @@ impl ImapSession {
             tracing::info!("Connecting to IMAP server with TCP");
             let session = imap_connect_tcp(&config).await?;
             Ok(ImapSession::Tcp(session))
+        }
+    }
+
+    pub async fn select(&mut self, mailbox: &str) -> async_imap::error::Result<Mailbox> {
+        match self {
+            ImapSession::Tcp(session) => session.select(mailbox).await,
+            ImapSession::Tls(session) => session.select(mailbox).await,
+        }
+    }
+
+    pub async fn capabilities(&mut self) -> async_imap::error::Result<Capabilities> {
+        match self {
+            ImapSession::Tcp(session) => session.capabilities().await,
+            ImapSession::Tls(session) => session.capabilities().await,
+        }
+    }
+
+    pub async fn has_idle_capability(&mut self) -> async_imap::error::Result<bool> {
+        let caps = self.capabilities().await?;
+        Ok(caps.has(&Capability::Atom("IDLE".to_string())))
+    }
+
+    pub async fn unsolicited_responses(&mut self) -> &async_channel::Receiver<UnsolicitedResponse> {
+        match self {
+            ImapSession::Tcp(session) => &session.unsolicited_responses,
+            ImapSession::Tls(session) => &session.unsolicited_responses,
         }
     }
 
