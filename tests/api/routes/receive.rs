@@ -52,7 +52,7 @@ async fn send_test_email() {
         .port(3025)
         .build();
 
-    mailer.send(email).await.unwrap();
+    mailer.send(email).await.expect("Failed to send email.");
 }
 
 async fn wait_until_running(app: &TestApp, id: &str) {
@@ -62,7 +62,7 @@ async fn wait_until_running(app: &TestApp, id: &str) {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         let connection = get_connection(&app, id).await;
 
-        tracing::info!("Connection state: {:?}", connection);
+        tracing::debug!("Connection state: {:?}", connection);
 
         let state = connection["state"]["type"].as_str();
         match state {
