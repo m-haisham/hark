@@ -226,6 +226,7 @@ pub async fn imap_connection_config(connection: &Connection) -> eyre::Result<Ima
     let imap_connection = ImapConnectionConfig {
         host: connection.host.clone(),
         port: connection.port,
+        tls: connection.tls,
         auth,
         flavour,
     };

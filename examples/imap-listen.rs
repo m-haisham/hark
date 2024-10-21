@@ -65,6 +65,7 @@ async fn main() {
         host,
         port,
         auth,
+        tls: false,
         flavour: Some(ImapFlavour::Gmail),
     };
 

@@ -1,4 +1,5 @@
 mod body;
+mod session;
 pub mod types;
 
 use async_native_tls::TlsStream;
@@ -10,7 +11,7 @@ use std::fmt::Debug;
 
 use async_imap::{
     extensions::idle::{self, IdleResponse},
-    types::Capability,
+    types::{Capability, Fetch},
     Client, Session,
 };
 use chrono::{Duration, Utc};
@@ -24,11 +25,14 @@ use tokio::{
 use crate::{connection::types::ImapFlavour, imap::body::parse_body};
 use types::Message;
 
+pub use session::ImapSession;
+
 #[derive(Debug)]
 pub struct ImapConnectionConfig {
     pub host: String,
     pub port: u16,
     pub auth: ImapAuth,
+    pub tls: bool,
     pub flavour: Option<ImapFlavour>,
 }
 
@@ -278,7 +282,16 @@ where
     let uids = session.search(format!("UNSEEN SINCE {formatted}")).await?;
 
     let seq: String = uids.into_iter().map(|v| v.to_string()).join(",");
-    fetch_seq(session, &seq).await
+
+    fetch_seq(session, &seq)
+        .await?
+        .into_iter()
+        .flat_map(|v| match v {
+            MessageParseResult::Message(m) => Some(Ok(m)),
+            MessageParseResult::ImapError(e) => Some(Err(ImapListenError::Imap(e))),
+            MessageParseResult::BodyNotFound(_) => None,
+        })
+        .collect()
 }
 
 #[tracing::instrument(skip(session))]
@@ -350,13 +363,29 @@ where
         IdleEvent::Exists(new_size) => {
             let seq = format!("{}:{}", listen.size + 1, new_size);
             listen.size = new_size;
-            let messages = fetch_seq(session, &seq).await?;
+            let messages = fetch_seq(session, &seq)
+                .await?
+                .into_iter()
+                .filter_map(|v| match v {
+                    MessageParseResult::Message(m) => Some(m),
+                    _ => None,
+                })
+                .collect();
+
             return Ok(messages);
         }
         IdleEvent::Fetch(id) => {
             let mailbox = session.select(&listen.config.mailbox).await?;
             listen.size = mailbox.exists;
-            let messages = fetch_seq(session, &id.to_string()).await?;
+            let messages = fetch_seq(session, &id.to_string())
+                .await?
+                .into_iter()
+                .filter_map(|v| match v {
+                    MessageParseResult::Message(m) => Some(m),
+                    _ => None,
+                })
+                .collect();
+
             return Ok(messages);
         }
     };
@@ -402,8 +431,18 @@ pub enum IdleEvent {
     SizeDecrease,
 }
 
+#[derive(Debug)]
+pub enum MessageParseResult {
+    Message(Message),
+    ImapError(async_imap::error::Error),
+    BodyNotFound(Fetch),
+}
+
 #[tracing::instrument(skip(session))]
-async fn fetch_seq<T>(session: &mut Session<T>, seq: &str) -> Result<Vec<Message>, ImapListenError>
+pub async fn fetch_seq<T>(
+    session: &mut Session<T>,
+    seq: &str,
+) -> async_imap::error::Result<Vec<MessageParseResult>>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
@@ -413,13 +452,23 @@ where
 
     let mut parsed = vec![];
     while let Some(message) = messages.next().await {
-        let message = message?;
+        let message = match message {
+            Ok(m) => m,
+            Err(e) => {
+                parsed.push(MessageParseResult::ImapError(e));
+                continue;
+            }
+        };
 
         let Some(body) = message.body() else {
+            parsed.push(MessageParseResult::BodyNotFound(message));
             continue;
         };
 
-        let parsed_message = parse_body(body).unwrap();
+        let parsed_message = parse_body(body)
+            .map(MessageParseResult::Message)
+            .unwrap_or_else(|| MessageParseResult::BodyNotFound(message));
+
         parsed.push(parsed_message);
     }
 

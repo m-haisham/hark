@@ -3,7 +3,7 @@ use eyre::Context;
 use task::{imap_connection_config, refresh_access_token};
 use types::{Connection, ConnectionAuth, ConnectionId};
 
-use crate::imap::{imap_connect_tcp, imap_connect_tls};
+use crate::imap::ImapSession;
 
 pub mod pool;
 pub mod task;
@@ -20,22 +20,11 @@ pub async fn imap_test_connect(id: ConnectionId, mut connection: Connection) -> 
     }
 
     let imap_connection = imap_connection_config(&connection).await?;
+    let mut session = ImapSession::connect(imap_connection)
+        .await
+        .wrap_err("Failed to connect to IMAP server")?;
 
-    if connection.tls {
-        let mut session = imap_connect_tls(&imap_connection)
-            .await
-            .map_err(|e| eyre::eyre!(e))
-            .wrap_err("Failed to connect to IMAP server")?;
-
-        session.logout().await?;
-    } else {
-        let mut session = imap_connect_tcp(&imap_connection)
-            .await
-            .map_err(|e| eyre::eyre!(e))
-            .wrap_err("Failed to connect to IMAP server")?;
-
-        session.logout().await?;
-    }
+    session.logout().await?;
 
     Ok(())
 }
