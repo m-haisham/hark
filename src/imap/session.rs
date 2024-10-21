@@ -18,9 +18,11 @@ pub enum ImapSession {
 impl ImapSession {
     pub async fn connect(config: ImapConnectionConfig) -> eyre::Result<Self> {
         if config.tls {
+            tracing::info!("Connecting to IMAP server with TLS");
             let session = imap_connect_tls(&config).await?;
             Ok(ImapSession::Tls(session))
         } else {
+            tracing::info!("Connecting to IMAP server with TCP");
             let session = imap_connect_tcp(&config).await?;
             Ok(ImapSession::Tcp(session))
         }

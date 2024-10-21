@@ -20,8 +20,9 @@ use crate::{
     background::command::BackgroundCommand,
     connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
     imap::{
-        connect::{imap_connect_tcp, imap_connect_tls, ImapAuth, ImapConnectionConfig},
+        connect::{ImapAuth, ImapConnectionConfig},
         handle_idle_event, handle_idle_response, imap_listen, ImapListenConfig, ImapListenError,
+        ImapSession,
     },
 };
 
@@ -123,42 +124,25 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let imap_connection = imap_connection_config(&inner_connection).await?;
 
-        let result = if inner_connection.tls {
-            tracing::info!("Connecting to IMAP server with TLS");
+        let session = ImapSession::connect(imap_connection)
+            .await
+            .map_err(|e| eyre::eyre!(e))
+            .wrap_err("Failed to connect to IMAP server")?;
 
-            let session = imap_connect_tls(&imap_connection)
-                .await
-                .map_err(|e| eyre::eyre!(e))
-                .wrap_err("Failed to connect to IMAP server")?;
+        background
+            .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                id: id.clone(),
+                event: ConnectionEventKind::Started,
+            }))
+            .await?;
 
-            // TODO: handle unsolicited responses
-
-            background
-                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                    id: id.clone(),
-                    event: ConnectionEventKind::Started,
-                }))
-                .await?;
-
-            idle(&id, inner_connection, session, background.clone(), state).await
-        } else {
-            tracing::info!("Connecting to IMAP server without TLS");
-
-            let session = imap_connect_tcp(&imap_connection)
-                .await
-                .map_err(|e| eyre::eyre!(e))
-                .wrap_err("Failed to connect to IMAP server")?;
-
-            // TODO: handle unsolicited responses
-
-            background
-                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                    id: id.clone(),
-                    event: ConnectionEventKind::Started,
-                }))
-                .await?;
-
-            idle(&id, inner_connection, session, background.clone(), state).await
+        let result = match session {
+            ImapSession::Tcp(session) => {
+                idle(&id, inner_connection, session, background.clone(), state).await
+            }
+            ImapSession::Tls(session) => {
+                idle(&id, inner_connection, session, background.clone(), state).await
+            }
         };
 
         match result {
