@@ -3,6 +3,7 @@ use async_imap::{
     Session,
 };
 use async_native_tls::TlsStream;
+use eyre::{eyre, Context};
 use tokio::net::TcpStream;
 
 use crate::imap::{
@@ -31,21 +32,25 @@ impl ImapSession {
         }
     }
 
-    pub async fn select(&mut self, mailbox: &str) -> async_imap::error::Result<Mailbox> {
+    pub async fn select(&mut self, mailbox: &str) -> eyre::Result<Mailbox> {
         match self {
             ImapSession::Tcp(session) => session.select(mailbox).await,
             ImapSession::Tls(session) => session.select(mailbox).await,
         }
+        .map_err(|e| eyre!(e))
+        .wrap_err("Failed to select mailbox")
     }
 
-    pub async fn capabilities(&mut self) -> async_imap::error::Result<Capabilities> {
+    pub async fn capabilities(&mut self) -> eyre::Result<Capabilities> {
         match self {
             ImapSession::Tcp(session) => session.capabilities().await,
             ImapSession::Tls(session) => session.capabilities().await,
         }
+        .map_err(|e| eyre!(e))
+        .wrap_err("Failed to get IMAP capabilities")
     }
 
-    pub async fn has_idle_capability(&mut self) -> async_imap::error::Result<bool> {
+    pub async fn has_idle_capability(&mut self) -> eyre::Result<bool> {
         let caps = self.capabilities().await?;
         Ok(caps.has(&Capability::Atom("IDLE".to_string())))
     }

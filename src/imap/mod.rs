@@ -3,13 +3,12 @@ pub mod connect;
 mod session;
 pub mod types;
 
-use connect::{check_capability, ImapError};
 use futures::StreamExt;
 use std::fmt::Debug;
 
 use async_imap::{
     extensions::idle::{self, IdleResponse},
-    types::{Capability, Fetch},
+    types::{Fetch, Mailbox},
     Session,
 };
 use chrono::{Duration, Utc};
@@ -22,17 +21,6 @@ use types::Message;
 
 pub use session::ImapSession;
 
-#[derive(Debug)]
-pub struct ImapListenConfig {
-    pub mailbox: String,
-}
-
-#[derive(Debug)]
-pub struct ImapListen {
-    config: ImapListenConfig,
-    size: u32,
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ImapListenError {
     #[error("{0}")]
@@ -40,28 +28,6 @@ pub enum ImapListenError {
 
     #[error("Imap server idle send 'EXIT'")]
     Exit,
-}
-
-#[tracing::instrument(skip(session))]
-pub async fn imap_listen<T>(
-    mut session: Session<T>,
-    config: ImapListenConfig,
-) -> Result<(Session<T>, ImapListen), ImapError>
-where
-    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
-{
-    // Check if the server supports the IDLE capability
-    check_capability(&mut session, Capability::Atom("IDLE".to_string())).await?;
-
-    let mailbox = session.select(&config.mailbox).await?;
-
-    Ok((
-        session,
-        ImapListen {
-            config,
-            size: mailbox.exists,
-        },
-    ))
 }
 
 pub async fn imap_lookback<T>(
@@ -90,7 +56,7 @@ where
 
 #[tracing::instrument(skip(session))]
 pub async fn imap_idle<T>(
-    listen: &mut ImapListen,
+    mailbox: &mut Mailbox,
     mut session: Session<T>,
 ) -> Result<(Session<T>, Vec<Message>), ImapListenError>
 where
@@ -105,7 +71,7 @@ where
     let (idle, result) = handle_idle_response(idle, response).await?;
 
     session = idle.done().await?;
-    let messages = handle_idle_event(&mut session, listen, result).await?;
+    let messages = handle_idle_event(&mut session, mailbox, result).await?;
 
     Ok((session, messages))
 }
@@ -139,7 +105,7 @@ where
 
 pub async fn handle_idle_event<T>(
     session: &mut Session<T>,
-    listen: &mut ImapListen,
+    mailbox: &mut Mailbox,
     event: IdleEvent,
 ) -> Result<Vec<Message>, ImapListenError>
 where
@@ -149,29 +115,14 @@ where
         IdleEvent::Exit => {
             return Err(ImapListenError::Exit);
         }
-        IdleEvent::SizeDecrease => {
-            let mailbox = session.select(&listen.config.mailbox).await?;
-            listen.size = mailbox.exists;
+        IdleEvent::SizeDecrease(change) => {
+            mailbox.exists -= change;
             return Ok(vec![]);
         }
         IdleEvent::Exists(new_size) => {
-            let seq = format!("{}:{}", listen.size + 1, new_size);
-            listen.size = new_size;
+            let seq = format!("{}:{}", mailbox.exists + 1, new_size);
+            mailbox.exists = new_size;
             let messages = fetch_seq(session, &seq)
-                .await?
-                .into_iter()
-                .filter_map(|v| match v {
-                    MessageParseResult::Message(m) => Some(m),
-                    _ => None,
-                })
-                .collect();
-
-            return Ok(messages);
-        }
-        IdleEvent::Fetch(id) => {
-            let mailbox = session.select(&listen.config.mailbox).await?;
-            listen.size = mailbox.exists;
-            let messages = fetch_seq(session, &id.to_string())
                 .await?
                 .into_iter()
                 .filter_map(|v| match v {
@@ -191,9 +142,9 @@ fn parse_response(response: &Response) -> Option<IdleEvent> {
         Response::Continue { .. } => None,
         Response::Done { .. } => None,
         Response::Data { .. } => None,
-        Response::Expunge(_) => Some(IdleEvent::SizeDecrease),
-        Response::Vanished { .. } => Some(IdleEvent::SizeDecrease),
-        Response::Fetch(uid, _) => Some(IdleEvent::Fetch(*uid)),
+        Response::Expunge(_) => Some(IdleEvent::SizeDecrease(1)),
+        Response::Vanished { .. } => None,
+        Response::Fetch(..) => None,
         Response::MailboxData(mailbox) => match mailbox {
             MailboxDatum::Exists(uid) => Some(IdleEvent::Exists(*uid)),
             MailboxDatum::Flags(_) => None,
@@ -221,8 +172,7 @@ fn parse_response(response: &Response) -> Option<IdleEvent> {
 pub enum IdleEvent {
     Exit,
     Exists(u32),
-    Fetch(u32),
-    SizeDecrease,
+    SizeDecrease(u32),
 }
 
 #[derive(Debug)]

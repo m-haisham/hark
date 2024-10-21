@@ -4,7 +4,7 @@ use hark::{
     connection::types::ImapFlavour,
     imap::{
         connect::{imap_connect_tls, ImapAuth, ImapConnectionConfig},
-        imap_idle, imap_listen, ImapListenConfig,
+        imap_idle,
     },
 };
 use oauth2::AccessToken;
@@ -69,22 +69,21 @@ async fn main() {
         flavour: Some(ImapFlavour::Gmail),
     };
 
-    let session = imap_connect_tls(&config)
+    let mut session = imap_connect_tls(&config)
         .await
         .expect("failed to connect to IMAP server");
 
     tracing::info!("Connected to IMAP server");
 
-    let listen_config = ImapListenConfig {
-        mailbox: "INBOX".to_string(),
-    };
-
-    let (mut session, mut listen) = imap_listen(session, listen_config).await.unwrap();
+    let mut mailbox = session
+        .select("INBOX")
+        .await
+        .expect("failed to select mailbox");
 
     tracing::info!("Listening to mailbox: {:?}", "INBOX");
 
     loop {
-        let (returned_session, messages) = imap_idle(&mut listen, session).await.unwrap();
+        let (returned_session, messages) = imap_idle(&mut mailbox, session).await.unwrap();
         session = returned_session;
 
         for message in messages {

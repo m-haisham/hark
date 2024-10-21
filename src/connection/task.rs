@@ -4,7 +4,7 @@ use std::{
     time::{self, Duration},
 };
 
-use async_imap::Session;
+use async_imap::{types::Mailbox, Session};
 use chrono::{DateTime, Utc};
 use eyre::{eyre, Context};
 use futures::lock::Mutex;
@@ -21,8 +21,7 @@ use crate::{
     connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
     imap::{
         connect::{ImapAuth, ImapConnectionConfig},
-        handle_idle_event, handle_idle_response, imap_listen, ImapListenConfig, ImapListenError,
-        ImapSession,
+        handle_idle_event, handle_idle_response, ImapListenError, ImapSession,
     },
 };
 
@@ -124,7 +123,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let imap_connection = imap_connection_config(&inner_connection).await?;
 
-        let session = ImapSession::connect(imap_connection)
+        let mut session = ImapSession::connect(imap_connection)
             .await
             .map_err(|e| eyre::eyre!(e))
             .wrap_err("Failed to connect to IMAP server")?;
@@ -136,12 +135,44 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
             }))
             .await?;
 
+        if !session.has_idle_capability().await? {
+            tracing::error!("IMAP server does not support IDLE command");
+            background
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::Failed(
+                        "IMAP server does not support IDLE command".to_string(),
+                    ),
+                }))
+                .await?;
+
+            return Ok(());
+        }
+
+        let mailbox = session.select(&inner_connection.mailbox).await?;
+
         let result = match session {
             ImapSession::Tcp(session) => {
-                idle(&id, inner_connection, session, background.clone(), state).await
+                idle(
+                    &id,
+                    inner_connection,
+                    session,
+                    background.clone(),
+                    state,
+                    mailbox,
+                )
+                .await
             }
             ImapSession::Tls(session) => {
-                idle(&id, inner_connection, session, background.clone(), state).await
+                idle(
+                    &id,
+                    inner_connection,
+                    session,
+                    background.clone(),
+                    state,
+                    mailbox,
+                )
+                .await
             }
         };
 
@@ -230,22 +261,14 @@ pub enum IdleError {
 async fn idle<T>(
     id: &ConnectionId,
     connection: Connection,
-    session: Session<T>,
+    mut session: Session<T>,
     background: async_channel::Sender<BackgroundCommand>,
     state: Arc<Mutex<ConnectionTaskState>>,
+    mut mailbox: Mailbox,
 ) -> Result<(), IdleError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
-    let listen_config = ImapListenConfig {
-        mailbox: connection.mailbox,
-    };
-
-    let (mut session, mut listen) = imap_listen(session, listen_config)
-        .await
-        .map_err(|e| eyre::eyre!(e))
-        .wrap_err("Failed to start listening to IMAP server")?;
-
     let expires_at = match connection.auth {
         ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
         ConnectionAuth::Password { .. } => None,
@@ -290,7 +313,7 @@ where
             .map_err(|e| eyre!(e))
             .wrap_err("Failed to complete IDLE")?;
 
-        let messages = handle_idle_event(&mut session, &mut listen, result)
+        let messages = handle_idle_event(&mut session, &mut mailbox, result)
             .await
             .map_err(|e| eyre!(e))
             .wrap_err("Failed to handle IDLE event")?;
