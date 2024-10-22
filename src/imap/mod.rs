@@ -1,5 +1,6 @@
 mod body;
 pub mod connect;
+pub mod lazy;
 mod session;
 pub mod types;
 

@@ -20,7 +20,7 @@ pub async fn imap_test_connect(id: ConnectionId, mut connection: Connection) -> 
     }
 
     let imap_connection = imap_connection_config(&connection).await?;
-    let mut session = ImapSession::connect(imap_connection)
+    let mut session = ImapSession::connect(&imap_connection)
         .await
         .wrap_err("Failed to connect to IMAP server")?;
 

@@ -123,7 +123,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let imap_connection = imap_connection_config(&inner_connection).await?;
 
-        let mut session = ImapSession::connect(imap_connection)
+        let mut session = ImapSession::connect(&imap_connection)
             .await
             .map_err(|e| eyre::eyre!(e))
             .wrap_err("Failed to connect to IMAP server")?;

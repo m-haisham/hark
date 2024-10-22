@@ -20,7 +20,7 @@ pub enum ImapSession {
 }
 
 impl ImapSession {
-    pub async fn connect(config: ImapConnectionConfig) -> eyre::Result<Self> {
+    pub async fn connect(config: &ImapConnectionConfig) -> eyre::Result<Self> {
         if config.tls {
             tracing::info!("Connecting to IMAP server with TLS");
             let session = imap_connect_tls(&config).await?;
@@ -39,6 +39,13 @@ impl ImapSession {
         }
         .map_err(|e| eyre!(e))
         .wrap_err("Failed to select mailbox")
+    }
+
+    pub async fn noop(&mut self) -> async_imap::error::Result<()> {
+        match self {
+            ImapSession::Tcp(session) => session.noop().await,
+            ImapSession::Tls(session) => session.noop().await,
+        }
     }
 
     pub async fn capabilities(&mut self) -> eyre::Result<Capabilities> {
