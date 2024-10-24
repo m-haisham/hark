@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
 pub use flavour::ImapFlavour;
-pub use handle::ConnectionHandle;
+pub use handle::{ConnectionHandle, ConnectionInfo};
 
 use crate::imap::types::Message;
 

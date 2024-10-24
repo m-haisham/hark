@@ -3,13 +3,19 @@ use tokio::sync::mpsc::{self, error::SendError};
 
 use super::{Connection, ConnectionCommand, ConnectionId, ConnectionState};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug)]
 pub struct ConnectionHandle {
     pub id: ConnectionId,
     pub state: ConnectionState,
     pub connection: Connection,
-    #[serde(skip)]
     sender: mpsc::Sender<ConnectionCommand>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectionInfo {
+    pub id: ConnectionId,
+    pub state: ConnectionState,
+    pub connection: Connection,
 }
 
 impl ConnectionHandle {
@@ -23,6 +29,14 @@ impl ConnectionHandle {
             state: ConnectionState::Starting,
             connection,
             sender,
+        }
+    }
+
+    pub fn info(&self) -> ConnectionInfo {
+        ConnectionInfo {
+            id: self.id.clone(),
+            state: self.state.clone(),
+            connection: self.connection.clone(),
         }
     }
 

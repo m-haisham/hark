@@ -14,6 +14,7 @@ use crate::imap::{
 pub type TcpConnection = TcpStream;
 pub type TlsConnection = TlsStream<TcpStream>;
 
+#[derive(Debug)]
 pub enum ImapSession {
     Tcp(Session<TcpConnection>),
     Tls(Session<TlsConnection>),

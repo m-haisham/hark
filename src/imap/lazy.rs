@@ -41,6 +41,7 @@ pub enum LazyEvent {
     Exit,
 }
 
+#[derive(Debug)]
 pub struct ImapLazySession {
     connection_id: ConnectionId,
     state: Arc<Mutex<ImapLazyState>>,
@@ -51,10 +52,12 @@ pub struct ImapLazySession {
     event_sender: mpsc::Sender<LazyEvent>,
 }
 
+#[derive(Debug)]
 pub struct ImapLazyState {
     worker: Option<ImapLazyWorker>,
 }
 
+#[derive(Debug)]
 pub struct ImapLazyWorker {
     connection_id: ConnectionId,
     session: ImapSession,

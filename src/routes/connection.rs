@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         imap_test_connect,
-        types::{Connection, ConnectionHandle, ConnectionId},
+        types::{Connection, ConnectionId, ConnectionInfo},
     },
     response::ResponseError,
     state::ArcAppState,
@@ -34,7 +34,7 @@ pub struct NewConnection {
 pub async fn create_connection(
     State(state): State<ArcAppState>,
     Json(data): Json<NewConnection>,
-) -> Result<Json<ConnectionHandle>, ResponseError> {
+) -> Result<Json<ConnectionInfo>, ResponseError> {
     let NewConnection { name, connection } = data;
     let id = ConnectionId::try_from(name)
         .map_err(|e| ResponseError::BadRequest(eyre!(e), e.to_string()))?;
@@ -45,7 +45,7 @@ pub async fn create_connection(
 
     let connection = connection_lock
         .get_connection(&id)
-        .cloned()
+        .map(|c| c.info())
         .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
@@ -64,11 +64,11 @@ pub async fn test_connection(Json(data): Json<NewConnection>) -> Result<Json<()>
 }
 
 #[tracing::instrument(name = "List all connections", skip_all)]
-pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<ConnectionHandle>> {
+pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<ConnectionInfo>> {
     let lock = state.connection_pool.lock().await;
     let connections = lock
         .list_connections()
-        .map(|(_, connection)| connection.clone())
+        .map(|(_, connection)| connection.info())
         .collect();
 
     Json(connections)
@@ -78,10 +78,10 @@ pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<Conn
 pub async fn get_connection(
     State(state): State<ArcAppState>,
     Path(id): Path<ConnectionId>,
-) -> Result<Json<ConnectionHandle>, ResponseError> {
+) -> Result<Json<ConnectionInfo>, ResponseError> {
     let lock = state.connection_pool.lock().await;
     match lock.get_connection(&id) {
-        Some(connection) => Ok(Json(connection.clone())),
+        Some(connection) => Ok(Json(connection.info())),
         None => Err(ResponseError::NotFound(
             eyre!("Connection not found: {id}"),
             "Connection not found".to_string(),
@@ -104,7 +104,7 @@ pub async fn update_connection(
     State(state): State<ArcAppState>,
     Path(id): Path<ConnectionId>,
     Json(data): Json<Connection>,
-) -> Result<Json<ConnectionHandle>, ResponseError> {
+) -> Result<Json<ConnectionInfo>, ResponseError> {
     delete_connection_inner(&state, &id).await?;
 
     let mut connection_lock = state.connection_pool.lock().await;
@@ -113,7 +113,7 @@ pub async fn update_connection(
     connection_lock.spawn(id.clone(), data, background_lock.sender());
     let connection = connection_lock
         .get_connection(&id)
-        .cloned()
+        .map(|c| c.info())
         .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
@@ -123,14 +123,14 @@ pub async fn update_connection(
 pub async fn delete_connection(
     State(state): State<ArcAppState>,
     Path(id): Path<ConnectionId>,
-) -> Result<Json<ConnectionHandle>, ResponseError> {
+) -> Result<Json<ConnectionInfo>, ResponseError> {
     Ok(Json(delete_connection_inner(&state, &id).await?))
 }
 
 async fn delete_connection_inner(
     state: &ArcAppState,
     id: &ConnectionId,
-) -> Result<ConnectionHandle, ResponseError> {
+) -> Result<ConnectionInfo, ResponseError> {
     let mut lock = state.connection_pool.lock().await;
 
     let Some(mut connection) = lock.remove_connection(&id) else {
@@ -151,5 +151,5 @@ async fn delete_connection_inner(
         }
     }
 
-    Ok(connection)
+    Ok(connection.info())
 }
