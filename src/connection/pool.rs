@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use super::types::{Connection, ConnectionCommand, ConnectionHandle, ConnectionId};
+use super::types::{Connection, ConnectionHandle, ConnectionId};
 use tokio::task::JoinHandle;
 use tracing::instrument;
 
 use crate::{
     background::command::BackgroundCommand,
     connection::task::{run_connection_task, ConnectionTask},
+    imap::lazy::ImapLazySession,
 };
 
 #[derive(Debug)]
@@ -32,14 +33,18 @@ impl ConnectionPool {
     ) {
         let (sender, receiver) = tokio::sync::mpsc::channel(20);
 
+        let lazy = ImapLazySession::new(id.clone(), Duration::from_secs(30), background.clone());
+        let lazy = Arc::new(tokio::sync::Mutex::new(lazy));
+
         let task = ConnectionTask {
             id: id.clone(),
             connection: connection.clone(),
             receiver,
             background,
+            lazy: Arc::clone(&lazy),
         };
 
-        let handle = ConnectionHandle::new(id.clone(), connection, sender);
+        let handle = ConnectionHandle::new(id.clone(), connection, sender, lazy);
         self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(run_connection_task(task));
@@ -65,12 +70,16 @@ impl ConnectionPool {
     }
 
     pub async fn stop_all(&mut self) {
-        for (_, handle) in self.pool.iter() {
-            let _ = handle.send(ConnectionCommand::Stop).await;
+        for (_, handle) in self.pool.iter_mut() {
+            handle.stop().await;
         }
     }
 
     pub async fn join_all(&mut self) {
+        for (_, handle) in self.pool.iter_mut() {
+            handle.wait_for_exit().await;
+        }
+
         let mut handles = Vec::new();
         for (_, handle) in self.handles.drain() {
             handles.push(handle);

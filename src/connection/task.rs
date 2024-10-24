@@ -7,12 +7,11 @@ use std::{
 use async_imap::{types::Mailbox, Session};
 use chrono::{DateTime, Utc};
 use eyre::{eyre, Context};
-use futures::lock::Mutex;
 use oauth2::TokenResponse;
 use stop_token::StopSource;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
+    sync::{mpsc, Mutex},
 };
 use tracing::instrument;
 
@@ -21,7 +20,9 @@ use crate::{
     connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
     imap::{
         connect::{ImapAuth, ImapConnectionConfig},
-        handle_idle_event, handle_idle_response, ImapListenError, ImapSession,
+        handle_idle_event, handle_idle_response,
+        lazy::{ImapLazySession, LazyCommand},
+        ImapListenError, ImapSession,
     },
 };
 
@@ -33,11 +34,13 @@ pub struct ConnectionTask {
     pub connection: Connection,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
     pub background: async_channel::Sender<BackgroundCommand>,
+    pub lazy: Arc<Mutex<ImapLazySession>>,
 }
 
 #[derive(Debug)]
 pub struct ConnectionTaskState {
     pub stop: bool,
+    pub lazy: Arc<Mutex<ImapLazySession>>,
 }
 
 #[instrument(name = "Listen for commands to connection", skip_all, fields(id = %id))]
@@ -87,6 +90,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         mut connection,
         receiver,
         background,
+        lazy,
     } = task;
 
     background
@@ -98,7 +102,12 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         .map_err(|e| eyre::eyre!(e))
         .wrap_err("Failed to send starting event to background task")?;
 
-    let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
+    // FIXME: Can be optimized to only use Arc<Mutex<_>> for the stop flag (mutable part)
+    let state = Arc::new(Mutex::new(ConnectionTaskState {
+        stop: false,
+        lazy: lazy.clone(),
+    }));
+
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
     if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
@@ -153,26 +162,10 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let result = match session {
             ImapSession::Tcp(session) => {
-                idle(
-                    &id,
-                    inner_connection,
-                    session,
-                    background.clone(),
-                    state,
-                    mailbox,
-                )
-                .await
+                idle(&id, inner_connection, session, &lazy, state, mailbox).await
             }
             ImapSession::Tls(session) => {
-                idle(
-                    &id,
-                    inner_connection,
-                    session,
-                    background.clone(),
-                    state,
-                    mailbox,
-                )
-                .await
+                idle(&id, inner_connection, session, &lazy, state, mailbox).await
             }
         };
 
@@ -262,25 +255,26 @@ async fn idle<T>(
     id: &ConnectionId,
     connection: Connection,
     mut session: Session<T>,
-    background: async_channel::Sender<BackgroundCommand>,
+    lazy: &Arc<Mutex<ImapLazySession>>,
     state: Arc<Mutex<ConnectionTaskState>>,
     mut mailbox: Mailbox,
 ) -> Result<(), IdleError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
-    let expires_at = match connection.auth {
+    let expires_at = match &connection.auth {
         ConnectionAuth::OAuth2(oauth2) => oauth2.expires_at,
         ConnectionAuth::Password { .. } => None,
     };
 
-    loop {
-        let mut idle = session.idle();
-        idle.init()
-            .await
-            .map_err(|e| eyre::eyre!(e))
-            .wrap_err("Failed to initialise IDLE")?;
+    let mut idle = session.idle();
 
+    idle.init()
+        .await
+        .map_err(|e| eyre::eyre!(e))
+        .wrap_err("Failed to initialise IDLE")?;
+
+    loop {
         let (idle_wait, interrupt) = idle.wait();
 
         // check state for stop every 10 seconds and drop interrupt if stop is true
@@ -297,9 +291,26 @@ where
             Err(e) => return Err(IdleError::Other(eyre!(e).wrap_err("Error during IDLE"))),
         };
 
-        let (idle, result) = match handle_idle_response(idle, response).await {
+        let result = match handle_idle_response(response).await {
             Ok(v) => v,
-            Err(ImapListenError::Exit) => break,
+            Err(ImapListenError::Exit) => {
+                tracing::info!("Connection terminated gracefully, completing IDLE and logging out");
+
+                session = idle
+                    .done()
+                    .await
+                    .map_err(|e| eyre!(e))
+                    .wrap_err("Failed to complete IDLE")?;
+
+                session
+                    .logout()
+                    .await
+                    .map_err(|e| eyre!(e))
+                    .wrap_err("Failed to logout")?;
+
+                break;
+            }
+            Err(ImapListenError::ResponseIgnored) => continue,
             Err(ImapListenError::Imap(e)) => {
                 return Err(IdleError::Other(
                     eyre!(e).wrap_err("Error while handling response"),
@@ -307,28 +318,20 @@ where
             }
         };
 
-        session = idle
-            .done()
-            .await
-            .map_err(|e| eyre!(e))
-            .wrap_err("Failed to complete IDLE")?;
-
-        let messages = handle_idle_event(&mut session, &mut mailbox, result)
+        let seq = handle_idle_event(&mut mailbox, result)
             .await
             .map_err(|e| eyre!(e))
             .wrap_err("Failed to handle IDLE event")?;
 
-        for message in messages {
-            tracing::debug!("Received message: {:?}", message);
+        let config = imap_connection_config(&connection).await?;
 
-            background
-                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                    id: id.clone(),
-                    event: ConnectionEventKind::MessageReceived(message),
-                }))
+        if let Some(sequence) = seq {
+            let mut lazy = lazy.lock().await;
+            let command = LazyCommand::FetchSequence(sequence);
+            lazy.send(&config, &connection.mailbox, command)
                 .await
-                .map_err(|e| eyre::eyre!(e))
-                .wrap_err("Failed to send message to background task")?;
+                .map_err(|e| eyre!(e))
+                .wrap_err("Failed to send command to lazy worker")?;
         }
     }
 

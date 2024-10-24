@@ -8,7 +8,7 @@ use futures::StreamExt;
 use std::fmt::Debug;
 
 use async_imap::{
-    extensions::idle::{self, IdleResponse},
+    extensions::idle::IdleResponse,
     types::{Fetch, Mailbox},
     Session,
 };
@@ -27,7 +27,10 @@ pub enum ImapListenError {
     #[error("{0}")]
     Imap(#[from] async_imap::error::Error),
 
-    #[error("Imap server idle send 'EXIT'")]
+    #[error("No response of interest")]
+    ResponseIgnored,
+
+    #[error("Exit requested manually or by timeout")]
     Exit,
 }
 
@@ -69,70 +72,57 @@ where
     let (idle_wait, _) = idle.wait();
 
     let response = idle_wait.await?;
-    let (idle, result) = handle_idle_response(idle, response).await?;
+    let result = handle_idle_response(response).await?;
 
     session = idle.done().await?;
-    let messages = handle_idle_event(&mut session, mailbox, result).await?;
+    let seq = handle_idle_event(mailbox, result).await?;
+
+    let messages = match seq {
+        Some(seq) => fetch_seq(&mut session, &seq)
+            .await?
+            .into_iter()
+            .flat_map(|v| match v {
+                MessageParseResult::Message(m) => Some(m),
+                _ => None,
+            })
+            .collect(),
+        None => vec![],
+    };
 
     Ok((session, messages))
 }
 
-pub async fn handle_idle_response<T>(
-    idle: idle::Handle<T>,
-    response: IdleResponse,
-) -> Result<(idle::Handle<T>, IdleEvent), ImapListenError>
-where
-    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
-{
+pub async fn handle_idle_response(response: IdleResponse) -> Result<IdleEvent, ImapListenError> {
     match response {
-        IdleResponse::ManualInterrupt => {
-            idle.done().await?;
-            Err(ImapListenError::Exit)
-        }
-        IdleResponse::Timeout => {
-            idle.done().await?;
-            Err(ImapListenError::Exit)
-        }
+        IdleResponse::ManualInterrupt => Err(ImapListenError::Exit),
+        IdleResponse::Timeout => Err(ImapListenError::Exit),
         IdleResponse::NewData(data) => {
             tracing::debug!("New data: {:?}", data);
             if let Some(event) = parse_response(data.parsed()) {
-                Ok((idle, event))
+                Ok(event)
             } else {
-                Err(ImapListenError::Exit)
+                Err(ImapListenError::ResponseIgnored)
             }
         }
     }
 }
 
-pub async fn handle_idle_event<T>(
-    session: &mut Session<T>,
+pub async fn handle_idle_event(
     mailbox: &mut Mailbox,
     event: IdleEvent,
-) -> Result<Vec<Message>, ImapListenError>
-where
-    T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
-{
+) -> Result<Option<String>, ImapListenError> {
     match event {
         IdleEvent::Exit => {
             return Err(ImapListenError::Exit);
         }
         IdleEvent::SizeDecrease(change) => {
             mailbox.exists -= change;
-            return Ok(vec![]);
+            return Ok(None);
         }
         IdleEvent::Exists(new_size) => {
             let seq = format!("{}:{}", mailbox.exists + 1, new_size);
             mailbox.exists = new_size;
-            let messages = fetch_seq(session, &seq)
-                .await?
-                .into_iter()
-                .filter_map(|v| match v {
-                    MessageParseResult::Message(m) => Some(m),
-                    _ => None,
-                })
-                .collect();
-
-            return Ok(messages);
+            return Ok(Some(seq));
         }
     };
 }

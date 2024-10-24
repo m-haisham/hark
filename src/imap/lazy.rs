@@ -21,8 +21,8 @@ use std::{
 
 use async_channel::RecvError;
 use eyre::{eyre, Context};
-use tokio::sync::mpsc;
-use tracing::instrument;
+use tokio::{sync::mpsc, task::JoinHandle};
+use tracing::{instrument, Span};
 
 use crate::{
     background::command::BackgroundCommand,
@@ -33,7 +33,7 @@ use crate::{
 use super::{connect::ImapConnectionConfig, ImapSession};
 
 pub enum LazyCommand {
-    Fetch { seq: String },
+    FetchSequence(String),
     Exit,
 }
 
@@ -43,27 +43,28 @@ pub enum LazyEvent {
 
 #[derive(Debug)]
 pub struct ImapLazySession {
-    connection_id: ConnectionId,
-    state: Arc<Mutex<ImapLazyState>>,
-    timeout: Duration,
-    command_sender: async_channel::Sender<LazyCommand>,
-    command_receiver: async_channel::Receiver<LazyCommand>,
-    background_sender: async_channel::Sender<BackgroundCommand>,
-    event_sender: mpsc::Sender<LazyEvent>,
+    pub connection_id: ConnectionId,
+    pub state: Arc<Mutex<ImapLazyState>>,
+    pub timeout: Duration,
+    pub command_sender: async_channel::Sender<LazyCommand>,
+    pub command_receiver: async_channel::Receiver<LazyCommand>,
+    pub background_sender: async_channel::Sender<BackgroundCommand>,
+    pub event_sender: mpsc::Sender<LazyEvent>,
 }
 
 #[derive(Debug)]
 pub struct ImapLazyState {
-    worker: Option<ImapLazyWorker>,
+    worker: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug)]
-pub struct ImapLazyWorker {
+pub struct ImapLazyWorkerState {
     connection_id: ConnectionId,
     session: ImapSession,
     command_receiver: async_channel::Receiver<LazyCommand>,
     event_sender: mpsc::Sender<LazyEvent>,
     background_sender: async_channel::Sender<BackgroundCommand>,
+    heartbeat: Duration,
     timeout: Duration,
 }
 
@@ -90,17 +91,29 @@ impl ImapLazySession {
         }
     }
 
-    pub async fn start(&mut self, config: &ImapConnectionConfig) -> eyre::Result<()> {
-        let session = ImapSession::connect(config).await?;
+    pub async fn start(
+        &mut self,
+        config: &ImapConnectionConfig,
+        mailbox: &str,
+    ) -> eyre::Result<()> {
+        let mut session = ImapSession::connect(config).await?;
 
-        let worker = ImapLazyWorker {
+        session
+            .select(mailbox)
+            .await
+            .wrap_err("Failed to select mailbox while lazy session start")?;
+
+        let worker = ImapLazyWorkerState {
             connection_id: self.connection_id.clone(),
             session,
             command_receiver: self.command_receiver.clone(),
             event_sender: self.event_sender.clone(),
             background_sender: self.background_sender.clone(),
             timeout: self.timeout,
+            heartbeat: Duration::from_secs(60),
         };
+
+        let handle = tokio::spawn(lazy_worker(worker));
 
         let mut state = self
             .state
@@ -108,7 +121,7 @@ impl ImapLazySession {
             .map_err(|e| eyre!(e.to_string())) // FIXME: cant recover from this error
             .wrap_err("Failed to acquire lock")?;
 
-        state.worker = Some(worker);
+        state.worker = Some(handle);
 
         Ok(())
     }
@@ -123,18 +136,57 @@ impl ImapLazySession {
         Ok(lock.worker.is_some())
     }
 
+    #[instrument(
+        skip_all,
+        fields(
+            connection_id = %self.connection_id,
+            worker_is_running = tracing::field::Empty,
+        ),
+    )]
     pub async fn send(
         &mut self,
         config: &ImapConnectionConfig,
+        mailbox: &str,
         command: LazyCommand,
     ) -> eyre::Result<()> {
         if !self.worker_is_running().await? {
-            self.start(config).await?;
+            Span::current().record("worker_is_running", &false);
+            tracing::info!("Lazy worker is not running, starting worker");
+            self.start(config, mailbox).await?;
+        } else {
+            Span::current().record("worker_is_running", &true);
         }
 
-        self.command_sender.try_send(command)?;
+        self.command_sender
+            .try_send(command)
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to send command to lazy worker")?;
 
         Ok(())
+    }
+
+    pub async fn stop(&mut self) -> eyre::Result<()> {
+        if self.worker_is_running().await? {
+            // We can ignore the error here this means the worker has already exited
+            let _ = self.command_sender.send(LazyCommand::Exit).await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn wait_for_exit(&self) {
+        let mut state = self.state.lock().expect("Failed to acquire lock");
+
+        if let Some(worker) = state.worker.take() {
+            drop(state);
+
+            tracing::info!("Waiting for lazy worker to exit");
+            if let Err(e) = worker.await {
+                tracing::error!("Lazy worker exited with error: {:?}", e);
+            }
+        } else {
+            tracing::info!("Lazy worker is not running, nothing to wait for");
+        }
     }
 }
 
@@ -161,23 +213,30 @@ async fn event_listener(
 }
 
 #[instrument(skip_all)]
-pub async fn lazy_worker(worker: ImapLazyWorker) {
+pub async fn lazy_worker(worker: ImapLazyWorkerState) {
     let mut session = worker.session;
-    let mut interval = tokio::time::interval(worker.timeout);
+    let mut heartbeat = tokio::time::interval(worker.heartbeat);
 
     loop {
         tokio::select! {
-            _ = interval.tick() => {
+            _ = heartbeat.tick() => {
                 tracing::debug!("Sending NOOP command to keep session alive");
                 if let Err(e) = session.noop().await {
                     tracing::error!("Failed to send NOOP command: {:?}", e);
                     break;
                 }
             }
+            _ = tokio::time::sleep(worker.timeout) => {
+                tracing::info!("Session timed out, logging out");
+                if let Err(e) = session.logout().await {
+                    tracing::error!("Failed to logout from session after timeout: {e:?}");
+                }
+                break;
+            }
             command = worker.command_receiver.recv() => {
                 match command {
-                    Ok(LazyCommand::Fetch { seq }) => {
-                        tracing::debug!("Fetching messages with sequence: {}", seq);
+                    Ok(LazyCommand::FetchSequence(seq)) => {
+                        tracing::info!("Fetching messages with sequence: {}", seq);
 
                         let messages = match session.fetch_messages(&seq).await {
                             Ok(messages) => messages,
@@ -190,7 +249,9 @@ pub async fn lazy_worker(worker: ImapLazyWorker) {
                         let messages = messages.into_iter().flat_map(|e| match e {
                             MessageParseResult::Message(message) => Some(message),
                             _ => None, // FIXME: should handle this.
-                        });
+                        }).collect::<Vec<_>>();
+
+                        tracing::debug!("Sending messages to background, count: {}", messages.len());
 
                         for message in messages {
                             if let Err(e) = worker
@@ -220,6 +281,8 @@ pub async fn lazy_worker(worker: ImapLazyWorker) {
     }
 
     if let Err(e) = worker.event_sender.send(LazyEvent::Exit).await {
-        tracing::error!("Failed to send exit event: {:?}", e);
+        // This is a warning because this shouldn't happen and would indicate a bug
+        // But otherwise it's not a big deal
+        tracing::warn!("Failed to send lazy exit event: {e:?}");
     }
 }
