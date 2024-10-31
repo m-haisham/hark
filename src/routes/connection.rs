@@ -1,7 +1,7 @@
 use crate::{
     connection::{
         imap_test_connect,
-        types::{Connection, ConnectionId, ConnectionInfo, ConnectionState},
+        types::{Connection, ConnectionId, ConnectionInfo},
     },
     response::ResponseError,
     state::ArcAppState,
@@ -117,51 +117,6 @@ pub async fn update_connection(
         .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
 
     Ok(Json(connection))
-}
-
-#[tracing::instrument(name = "Stop a connection", skip_all, fields(id = %id))]
-pub async fn stop_connection(
-    State(state): State<ArcAppState>,
-    Path(id): Path<ConnectionId>,
-) -> Result<Json<ConnectionInfo>, ResponseError> {
-    let join_handle = {
-        let mut lock = state.connection_pool.lock().await;
-
-        let Some(connection) = lock.get_connection(&id) else {
-            return Err(ResponseError::NotFound(
-                eyre!("Connection not found: {id}"),
-                "Connection not found".to_string(),
-            ));
-        };
-
-        if connection.state != ConnectionState::Running {
-            return Err(ResponseError::BadRequest(
-                eyre!("Connection is not running: {id}"),
-                "Connection is not running".to_string(),
-            ));
-        }
-
-        connection.stop().await;
-
-        lock.remove_join(&id).await
-    };
-
-    if let Some(handle) = join_handle {
-        if !handle.is_finished() {
-            let _ = handle.await;
-        }
-    }
-
-    let lock = state.connection_pool.lock().await;
-
-    let Some(connection) = lock.get_connection(&id) else {
-        return Err(ResponseError::NotFound(
-            eyre!("Connection not found: {id}"),
-            "Connection not found".to_string(),
-        ));
-    };
-
-    Ok(Json(connection.info()))
 }
 
 #[tracing::instrument(name = "Delete a connection", skip_all, fields(id = %id))]

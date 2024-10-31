@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use tokio::{net::TcpListener, signal};
@@ -27,7 +27,6 @@ pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, 
         .route("/connections/:id", get(connection::get_connection))
         .route("/connections/:id", put(connection::update_connection))
         .route("/connections/:id", delete(connection::delete_connection))
-        .route("/connections/:id/stop", patch(connection::stop_connection))
         .layer(TraceLayer::new_for_http().make_span_with(RequestSpan))
         .with_state(state);
 
