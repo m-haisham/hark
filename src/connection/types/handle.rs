@@ -57,7 +57,7 @@ impl ConnectionHandle {
         self.sender.send(command).await
     }
 
-    pub async fn stop(&mut self) {
+    pub async fn stop(&self) {
         // The task is already stopped if the receiver is dropped,
         // so we can ignore the error.
         let _ = self.send(ConnectionCommand::Stop).await;

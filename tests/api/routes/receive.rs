@@ -1,11 +1,9 @@
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer};
 
-use crate::helpers::{spawn_app, TestApp};
+use crate::helpers::{spawn_app, wait_until_running};
 use crate::matchers::callback_type;
 use crate::routes::connection::{create_connection, new_connection};
-
-use super::connection::get_connection;
 
 #[tokio::test]
 async fn connection_should_send_message_to_callback() {
@@ -55,32 +53,9 @@ async fn send_test_email() {
     mailer.send(email).await.expect("Failed to send email.");
 }
 
-async fn wait_until_running(app: &TestApp, id: &str) {
-    let mut last_state = None;
-
-    for _ in 0..5 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let connection = get_connection(&app, id).await;
-
-        tracing::debug!("Connection state: {:?}", connection);
-
-        let state = connection["state"]["type"].as_str();
-        match state {
-            Some("running") => return,
-            Some("stopped") => panic!("Connection stopped running."),
-            Some("failed") => panic!("Connection failed to start."),
-            _ => {}
-        }
-
-        last_state = state.map(|v| v.to_string());
-    }
-
-    panic!("Connection did not start running. Make sure the IMAP server is running and the connection settings are correct. Last state: {last_state:?}");
-}
-
 async fn wait_until_callback_is_called(mock_server: &MockServer) {
     for _ in 0..5 {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
         let requests = mock_server
             .received_requests()

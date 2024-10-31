@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use crate::helpers::{spawn_app, TestApp};
+use crate::helpers::{spawn_app, wait_until_running, wait_until_state, TestApp};
 
 pub async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serde_json::Value {
     let response = app
@@ -263,4 +263,90 @@ async fn delete_connection_returns_200_for_existing_connection() {
 
     // Assert
     assert_eq!(response.status().as_u16(), 200);
+}
+
+#[tokio::test]
+async fn stop_connection_should_return_404_for_missing_connection() {
+    let app = spawn_app().await;
+
+    let response = app
+        .api_client
+        .patch(&format!("{}/connections/missing/stop", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), 404);
+}
+
+#[tokio::test]
+async fn stop_connection_should_terminate_running() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    create_connection(&app, new_connection("test")).await;
+    wait_until_running(&app, "test").await;
+
+    let response = app
+        .api_client
+        .patch(&format!("{}/connections/test/stop", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 200);
+
+    let connection = get_connection(&app, "test").await;
+    assert_eq!(connection["state"]["type"], "stopped");
+}
+
+#[tokio::test]
+async fn stop_connection_should_return_400_for_stopped_connection() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    create_connection(&app, new_connection("test")).await;
+    wait_until_running(&app, "test").await;
+
+    app.api_client
+        .patch(&format!("{}/connections/test/stop", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    let response = app
+        .api_client
+        .patch(&format!("{}/connections/test/stop", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 400);
+}
+
+#[tokio::test]
+async fn stop_connection_should_return_400_for_failed_connection() {
+    // Arrange
+    let app = spawn_app().await;
+
+    // Act
+    let mut connection = new_connection("test");
+    connection["host"] = "invalid".into();
+
+    create_connection(&app, connection).await;
+    wait_until_state(&app, "test", "failed").await;
+
+    let response = app
+        .api_client
+        .patch(&format!("{}/connections/test/stop", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(response.status().as_u16(), 400);
 }

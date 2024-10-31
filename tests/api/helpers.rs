@@ -14,10 +14,12 @@ use once_cell::sync::Lazy;
 use url::Url;
 use wiremock::MockServer;
 
+use crate::routes::connection::get_connection;
+
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
-    if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber("debug".to_string(), std::io::stdout);
+    if let Ok(level) = std::env::var("TEST_LOG") {
+        let subscriber = get_subscriber(level, std::io::stdout);
         init_subscriber(subscriber);
     } else {
         let subscriber = get_subscriber("info".to_string(), std::io::sink);
@@ -95,4 +97,50 @@ pub async fn spawn_app_with_settings() -> TestApp {
 pub fn assert_is_redirect_to(response: &reqwest::Response, location: &str) {
     assert_eq!(response.status().as_u16(), 303);
     assert_eq!(response.headers().get("Location").unwrap(), location);
+}
+
+pub async fn wait_until_running(app: &TestApp, id: &str) {
+    let mut last_state = None;
+
+    for _ in 0..5 {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let connection = get_connection(&app, id).await;
+
+        tracing::debug!("Connection state: {:?}", connection);
+
+        let state = connection["state"]["type"].as_str();
+        match state {
+            Some("running") => return,
+            Some("stopped") => panic!("Connection stopped running."),
+            Some("failed") => panic!("Connection failed to start."),
+            _ => {}
+        }
+
+        last_state = state.map(|v| v.to_string());
+    }
+
+    panic!("Connection did not start running. Make sure the IMAP server is running and the connection settings are correct. Last state: {last_state:?}");
+}
+
+/// Wait until the connection reaches the specified state.
+///
+/// To check that a connection has reached the running state, use [`wait_until_running`] instead.
+pub async fn wait_until_state(app: &TestApp, id: &str, state: &str) {
+    let mut last_state = None;
+
+    for _ in 0..5 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let connection = get_connection(&app, id).await;
+
+        tracing::debug!("Connection state: {:?}", connection);
+
+        let current_state = connection["state"]["type"].as_str();
+        if current_state == Some(state) {
+            return;
+        }
+
+        last_state = current_state.map(|v| v.to_string());
+    }
+
+    panic!("Connection did not reach the state {state}. Last state: {last_state:?}");
 }

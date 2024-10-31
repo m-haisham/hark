@@ -94,7 +94,7 @@ pub struct OAuth2Config {
     pub scope: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionState {
