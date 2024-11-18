@@ -21,7 +21,7 @@ use std::{
 
 use async_channel::RecvError;
 use eyre::{eyre, Context};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::mpsc, task::JoinHandle, time::MissedTickBehavior};
 use tracing::{instrument, Span};
 
 use crate::{
@@ -216,6 +216,10 @@ async fn event_listener(
 pub async fn lazy_worker(worker: ImapLazyWorkerState) {
     let mut session = worker.session;
     let mut heartbeat = tokio::time::interval(worker.heartbeat);
+
+    // The only scenario where we would skip a tick is when fetching messages
+    // since that also counts as a heartbeat, we can skip the tick
+    heartbeat.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
