@@ -240,8 +240,24 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
 
                         let messages = match session.fetch_messages(&seq).await {
                             Ok(messages) => messages,
+                            Err(async_imap::error::Error::Io(e)) => {
+                                tracing::error!("IO error while fetching messages: {:?}", e);
+                                // FIXME: this command is lost possibly should be retried
+                                break;
+                            }
+                            Err(async_imap::error::Error::No(e)) => {
+                                tracing::error!("NO response while fetching messages: {:?}", e);
+                                // FIXME: this command is lost possibly should be retried
+                                break;
+                            }
+                            Err(async_imap::error::Error::ConnectionLost) => {
+                                tracing::error!("Connection lost while fetching messages");
+                                // FIXME: this command is lost possibly should be retried
+                                break;
+                            }
                             Err(e) => {
                                 tracing::error!("Failed to fetch messages: {:?}", e);
+                                // FIXME: this command is lost possibly should be retried
                                 continue;
                             }
                         };
