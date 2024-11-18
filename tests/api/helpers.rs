@@ -5,7 +5,7 @@ use hark::{
     anchor::Anchor,
     background::BackgroundPool,
     connection::pool::ConnectionPool,
-    settings::get_config,
+    settings::{get_config, Settings},
     startup::run,
     state::AppState,
     telemetry::{get_subscriber, init_subscriber},
@@ -34,12 +34,16 @@ pub struct TestApp {
     pub mock_server: MockServer,
 }
 
-#[inline]
-pub async fn spawn_app() -> TestApp {
-    spawn_app_with_settings().await
+pub fn get_test_settings() -> hark::settings::Settings {
+    get_config("config.test.toml").expect("Failed to read configuration")
 }
 
-pub async fn spawn_app_with_settings() -> TestApp {
+#[inline]
+pub async fn spawn_app() -> TestApp {
+    spawn_app_with_settings(get_test_settings()).await
+}
+
+pub async fn spawn_app_with_settings(mut settings: Settings) -> TestApp {
     Lazy::force(&TRACING);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -50,7 +54,6 @@ pub async fn spawn_app_with_settings() -> TestApp {
     let mock_server = MockServer::start().await;
 
     // During testing the working directory is the package directory.
-    let mut settings = get_config("config.test.toml").expect("Failed to read configuration");
     settings.anchor.callback_url = Url::parse(&mock_server.uri())
         .expect("Failed to parse mock server URL")
         .join("/callback")

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 
 use super::types::{Connection, ConnectionHandle, ConnectionId};
 use tokio::task::JoinHandle;
@@ -8,6 +8,7 @@ use crate::{
     background::command::BackgroundCommand,
     connection::task::{run_connection_task, ConnectionTask},
     imap::lazy::ImapLazySession,
+    settings::LazySettings,
 };
 
 #[derive(Debug)]
@@ -29,11 +30,18 @@ impl ConnectionPool {
         &mut self,
         id: ConnectionId,
         connection: Connection,
+        lazy_settings: &LazySettings,
         background: async_channel::Sender<BackgroundCommand>,
     ) {
         let (sender, receiver) = tokio::sync::mpsc::channel(20);
 
-        let lazy = ImapLazySession::new(id.clone(), Duration::from_secs(30), background.clone());
+        let lazy = ImapLazySession::new(
+            id.clone(),
+            lazy_settings.timeout,
+            lazy_settings.heartbeat,
+            background.clone(),
+        );
+
         let lazy = Arc::new(tokio::sync::Mutex::new(lazy));
 
         let task = ConnectionTask {

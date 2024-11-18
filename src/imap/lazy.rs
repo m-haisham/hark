@@ -46,6 +46,7 @@ pub struct ImapLazySession {
     pub connection_id: ConnectionId,
     pub state: Arc<Mutex<ImapLazyState>>,
     pub timeout: Duration,
+    pub heartbeat: Duration,
     pub command_sender: async_channel::Sender<LazyCommand>,
     pub command_receiver: async_channel::Receiver<LazyCommand>,
     pub background_sender: async_channel::Sender<BackgroundCommand>,
@@ -72,6 +73,7 @@ impl ImapLazySession {
     pub fn new(
         connection_id: ConnectionId,
         timeout: Duration,
+        heartbeat: Duration,
         background_sender: async_channel::Sender<BackgroundCommand>,
     ) -> Self {
         let (command_sender, command_receiver) = async_channel::bounded(1024);
@@ -83,6 +85,7 @@ impl ImapLazySession {
         Self {
             connection_id,
             timeout,
+            heartbeat,
             command_sender,
             command_receiver,
             event_sender,
@@ -117,7 +120,7 @@ impl ImapLazySession {
             event_sender: self.event_sender.clone(),
             background_sender: self.background_sender.clone(),
             timeout: self.timeout,
-            heartbeat: Duration::from_secs(60),
+            heartbeat: self.heartbeat,
         };
 
         let handle = tokio::spawn(lazy_worker(worker));

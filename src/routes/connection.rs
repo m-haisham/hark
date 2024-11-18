@@ -41,7 +41,13 @@ pub async fn create_connection(
 
     let background_lock = state.background_pool.lock().await;
     let mut connection_lock = state.connection_pool.lock().await;
-    connection_lock.spawn(id.clone(), connection, background_lock.sender());
+
+    connection_lock.spawn(
+        id.clone(),
+        connection,
+        &state.settings.lazy,
+        background_lock.sender(),
+    );
 
     let connection = connection_lock
         .get_connection(&id)
@@ -110,7 +116,13 @@ pub async fn update_connection(
     let mut connection_lock = state.connection_pool.lock().await;
     let background_lock = state.background_pool.lock().await;
 
-    connection_lock.spawn(id.clone(), data, background_lock.sender());
+    connection_lock.spawn(
+        id.clone(),
+        data,
+        &state.settings.lazy,
+        background_lock.sender(),
+    );
+
     let connection = connection_lock
         .get_connection(&id)
         .map(|c| c.info())

@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Duration,
+};
 
 use serde::Deserialize;
 use url::Url;
@@ -20,6 +23,8 @@ pub fn get_config(file: &str) -> Result<Settings, config::ConfigError> {
 pub struct Settings {
     pub server: ServerSettings,
     #[serde(default)]
+    pub lazy: LazySettings,
+    #[serde(default)]
     pub connections: HashMap<ConnectionId, Connection>,
     #[serde(default)]
     pub anchor: AnchorSettings,
@@ -29,6 +34,41 @@ pub struct Settings {
 pub struct ServerSettings {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct LazySettings {
+    #[serde(default = "default_timeout")]
+    #[serde(deserialize_with = "duration_millis")]
+    pub timeout: Duration,
+    #[serde(default = "default_heartbeat")]
+    #[serde(deserialize_with = "duration_millis")]
+    pub heartbeat: Duration,
+}
+
+impl Default for LazySettings {
+    fn default() -> Self {
+        LazySettings {
+            timeout: default_timeout(),
+            heartbeat: default_heartbeat(),
+        }
+    }
+}
+
+fn default_timeout() -> Duration {
+    Duration::from_secs(60)
+}
+
+fn default_heartbeat() -> Duration {
+    Duration::from_secs(30)
+}
+
+fn duration_millis<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let ms = u64::deserialize(deserializer)?;
+    Ok(Duration::from_millis(ms))
 }
 
 #[derive(Deserialize, Debug, Clone)]

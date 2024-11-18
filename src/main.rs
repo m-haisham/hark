@@ -42,7 +42,12 @@ async fn main() -> eyre::Result<()> {
 
     let mut connection_pool = ConnectionPool::new();
     for (id, connection) in settings.connections.iter() {
-        connection_pool.spawn(id.clone(), connection.clone(), background_pool.sender());
+        connection_pool.spawn(
+            id.clone(),
+            connection.clone(),
+            &settings.lazy,
+            background_pool.sender(),
+        );
     }
 
     let addr = (settings.server.host.as_str(), settings.server.port);
