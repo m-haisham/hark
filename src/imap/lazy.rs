@@ -91,6 +91,13 @@ impl ImapLazySession {
         }
     }
 
+    #[instrument(
+        skip_all,
+        fields(
+            connection_id = %self.connection_id,
+            mailbox,
+        ),
+    )]
     pub async fn start(
         &mut self,
         config: &ImapConnectionConfig,
