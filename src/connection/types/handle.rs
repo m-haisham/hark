@@ -6,7 +6,9 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::imap::lazy::ImapLazySession;
+use crate::{
+    connection::refresh::get_connection_from_store, data::Data, imap::lazy::ImapLazySession,
+};
 
 use super::{Connection, ConnectionCommand, ConnectionId, ConnectionState};
 
@@ -14,7 +16,7 @@ use super::{Connection, ConnectionCommand, ConnectionId, ConnectionState};
 pub struct ConnectionHandle {
     pub id: ConnectionId,
     pub state: ConnectionState,
-    pub connection: Connection,
+    data: Arc<Data>,
     sender: mpsc::Sender<ConnectionCommand>,
     lazy: Arc<Mutex<ImapLazySession>>,
 }
@@ -29,25 +31,25 @@ pub struct ConnectionInfo {
 impl ConnectionHandle {
     pub fn new(
         id: ConnectionId,
-        connection: Connection,
+        data: Arc<Data>,
         sender: mpsc::Sender<ConnectionCommand>,
         lazy: Arc<Mutex<ImapLazySession>>,
     ) -> Self {
         Self {
             id,
             state: ConnectionState::Starting,
-            connection,
+            data,
             sender,
             lazy,
         }
     }
 
-    pub fn info(&self) -> ConnectionInfo {
-        ConnectionInfo {
+    pub async fn info(&self) -> eyre::Result<ConnectionInfo> {
+        Ok(ConnectionInfo {
             id: self.id.clone(),
             state: self.state.clone(),
-            connection: self.connection.clone(),
-        }
+            connection: get_connection_from_store(&self.data, &self.id).await?,
+        })
     }
 
     pub async fn send(

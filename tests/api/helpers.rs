@@ -5,6 +5,7 @@ use hark::{
     anchor::Anchor,
     background::BackgroundPool,
     connection::pool::ConnectionPool,
+    data::Data,
     settings::{get_config, Settings},
     startup::run,
     state::AppState,
@@ -66,8 +67,12 @@ pub async fn spawn_app_with_settings(mut settings: Settings) -> TestApp {
 
     let anchor = Anchor::new(client.clone(), settings.anchor.clone());
 
+    let data = Arc::new(Data::new());
+    let connection_pool = ConnectionPool::new(&data);
+
     let state = Arc::new(AppState {
-        connection_pool: Mutex::new(ConnectionPool::new()),
+        data,
+        connection_pool: Mutex::new(connection_pool),
         background_pool: Mutex::new(BackgroundPool::new()),
         anchor,
         settings: settings.clone(),

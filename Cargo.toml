@@ -30,6 +30,7 @@ reqwest = { version = "0.12.8", features = ["json"] }
 color-eyre = "0.6.3"
 eyre = "0.6.12"
 tracing-error = "0.2.0"
+dashmap = "6.1.0"
 
 [dependencies.oauth2]
 version = "4.4.2"

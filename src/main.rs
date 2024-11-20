@@ -6,6 +6,7 @@ use hark::{
     anchor::Anchor,
     background::BackgroundPool,
     connection::pool::ConnectionPool,
+    data::Data,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
     state::AppState,
@@ -38,9 +39,10 @@ async fn main() -> eyre::Result<()> {
         }
     }
 
+    let data = Arc::new(Data::new());
     let background_pool = BackgroundPool::new();
 
-    let mut connection_pool = ConnectionPool::new();
+    let mut connection_pool = ConnectionPool::new(&data);
     for (id, connection) in settings.connections.iter() {
         connection_pool.spawn(
             id.clone(),
@@ -56,6 +58,7 @@ async fn main() -> eyre::Result<()> {
         .expect("Failed to bind to the tcp stream");
 
     let state = Arc::new(AppState {
+        data,
         connection_pool: Mutex::new(connection_pool),
         background_pool: Mutex::new(background_pool),
         anchor,

@@ -1,13 +1,12 @@
 use std::{
     fmt::Debug,
     sync::Arc,
-    time::{self, Duration},
+    time::{self},
 };
 
 use async_imap::{types::Mailbox, Session};
 use chrono::{DateTime, Utc};
 use eyre::{eyre, Context};
-use oauth2::TokenResponse;
 use stop_token::StopSource;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -17,7 +16,13 @@ use tracing::instrument;
 
 use crate::{
     background::command::BackgroundCommand,
-    connection::types::{ConnectionEvent, ConnectionEventKind, ImapFlavour, OAuth2},
+    connection::{
+        refresh::{
+            get_connection_from_store, is_connection_auth_refresh_needed, refresh_connection_auth,
+        },
+        types::{ConnectionEvent, ConnectionEventKind, ImapFlavour},
+    },
+    data::Data,
     imap::{
         connect::{ImapAuth, ImapConnectionConfig},
         handle_idle_event, handle_idle_response,
@@ -31,7 +36,7 @@ use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
 #[derive(Debug)]
 pub struct ConnectionTask {
     pub id: ConnectionId,
-    pub connection: Connection,
+    pub data: Arc<Data>,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
     pub background: async_channel::Sender<BackgroundCommand>,
     pub lazy: Arc<Mutex<ImapLazySession>>,
@@ -87,7 +92,7 @@ pub async fn run_connection_task(task: ConnectionTask) {
 pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()> {
     let ConnectionTask {
         id,
-        mut connection,
+        data,
         receiver,
         background,
         lazy,
@@ -110,20 +115,14 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
-    if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
-        // Update the access token if it is about to expire, expired, or expires_at is not provided
-        if (oauth2.expires_at.unwrap_or_else(Utc::now) - Utc::now()).num_seconds() < 60 {
-            connection.auth = ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
+    let connection = get_connection_from_store(&data, &id)
+        .await
+        .wrap_err("Failed to get connection from data store")?;
 
-            background
-                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
-                    id: id.clone(),
-                    event: ConnectionEventKind::Updated(connection.clone()),
-                }))
-                .await?;
-        } else {
-            connection.auth = ConnectionAuth::OAuth2(oauth2);
-        }
+    if is_connection_auth_refresh_needed(&connection).await {
+        refresh_connection_auth(&data, &id)
+            .await
+            .wrap_err("Failed to refresh connection")?;
     }
 
     loop {
@@ -179,20 +178,18 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                     "Connection task terminated due to expired access token, refreshing token."
                 );
 
-                if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
-                    connection.auth =
-                        ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
-                }
+                refresh_connection_auth(&data, &id)
+                    .await
+                    .wrap_err("Failed to refresh connection")?;
             }
             Err(e) => {
                 tracing::error!("Retrying failed connection with error: {:?}", e);
                 // TODO: Add retry with backoff strategy, e.g.:
                 // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
 
-                if let ConnectionAuth::OAuth2(oauth2) = connection.auth {
-                    connection.auth =
-                        ConnectionAuth::OAuth2(refresh_access_token(&id, oauth2).await?);
-                }
+                refresh_connection_auth(&data, &id)
+                    .await
+                    .wrap_err("Failed to refresh connection")?;
             }
         }
     }
@@ -378,59 +375,4 @@ async fn terminate_on_expired(expires_at: Option<DateTime<Utc>>) {
     } else {
         futures::future::pending::<()>().await;
     }
-}
-
-#[instrument(
-    name = "Refresh access token",
-    skip_all,
-    fields(connection_id = %connection_id)
-)]
-pub async fn refresh_access_token(
-    connection_id: &ConnectionId,
-    oauth2: OAuth2,
-) -> eyre::Result<OAuth2> {
-    let OAuth2 {
-        refresh_token,
-        config,
-        ..
-    } = oauth2;
-
-    tracing::info!("Refreshing access token for connection");
-
-    let client: oauth2::basic::BasicClient = oauth2::Client::new(
-        config.client_id.clone(),
-        Some(config.client_secret.clone()),
-        config.auth_uri.clone(),
-        Some(config.token_uri.clone()),
-    );
-
-    let request = client.exchange_refresh_token(&refresh_token);
-
-    tracing::debug!("Requesting new access token");
-
-    let response = request
-        .request_async(oauth2::reqwest::async_http_client)
-        .await
-        .map_err(|e| eyre!(e))
-        .wrap_err("Failed to refresh access token")?;
-
-    let expires_in = response
-        .expires_in()
-        .unwrap_or_else(|| Duration::from_secs(3600));
-
-    let expires_at = chrono::Utc::now() + chrono::Duration::from_std(expires_in)?
-        - chrono::Duration::seconds(60); // subtract 60 seconds to be safe
-
-    // Use the refresh token from the response if provided, otherwise use the existing one
-    // This is to handle the case where the refresh token is rotated
-    let refresh_token = response.refresh_token().cloned().unwrap_or(refresh_token);
-
-    let oauth2 = OAuth2 {
-        access_token: response.access_token().clone(),
-        expires_at: Some(expires_at),
-        refresh_token,
-        config,
-    };
-
-    Ok(oauth2)
 }

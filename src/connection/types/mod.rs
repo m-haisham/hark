@@ -122,6 +122,5 @@ pub enum ConnectionEventKind {
     Started,
     Stopped,
     Failed(String),
-    Updated(Connection),
     MessageReceived(Message),
 }

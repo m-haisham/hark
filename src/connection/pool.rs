@@ -1,25 +1,28 @@
 use std::{collections::HashMap, sync::Arc};
 
 use super::types::{Connection, ConnectionHandle, ConnectionId};
-use tokio::task::JoinHandle;
+use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::instrument;
 
 use crate::{
     background::command::BackgroundCommand,
     connection::task::{run_connection_task, ConnectionTask},
+    data::Data,
     imap::lazy::ImapLazySession,
     settings::LazySettings,
 };
 
 #[derive(Debug)]
 pub struct ConnectionPool {
+    data: Arc<Data>,
     pool: HashMap<ConnectionId, ConnectionHandle>,
     handles: HashMap<ConnectionId, JoinHandle<()>>,
 }
 
 impl ConnectionPool {
-    pub fn new() -> Self {
+    pub fn new(data: &Arc<Data>) -> Self {
         Self {
+            data: Arc::clone(data),
             pool: HashMap::new(),
             handles: HashMap::new(),
         }
@@ -33,6 +36,11 @@ impl ConnectionPool {
         lazy_settings: &LazySettings,
         background: async_channel::Sender<BackgroundCommand>,
     ) {
+        // Insert the connection into the data store
+        self.data
+            .connections
+            .insert(id.clone(), Mutex::new(connection));
+
         let (sender, receiver) = tokio::sync::mpsc::channel(20);
 
         let lazy = ImapLazySession::new(
@@ -47,13 +55,13 @@ impl ConnectionPool {
 
         let task = ConnectionTask {
             id: id.clone(),
-            connection: connection.clone(),
+            data: Arc::clone(&self.data),
             receiver,
             background,
             lazy: Arc::clone(&lazy),
         };
 
-        let handle = ConnectionHandle::new(id.clone(), connection, sender, lazy);
+        let handle = ConnectionHandle::new(id.clone(), Arc::clone(&self.data), sender, lazy);
         self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(run_connection_task(task));

@@ -51,8 +51,9 @@ pub async fn create_connection(
 
     let connection = connection_lock
         .get_connection(&id)
-        .map(|c| c.info())
-        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
+        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?
+        .info()
+        .await?;
 
     Ok(Json(connection))
 }
@@ -70,14 +71,17 @@ pub async fn test_connection(Json(data): Json<NewConnection>) -> Result<Json<()>
 }
 
 #[tracing::instrument(name = "List all connections", skip_all)]
-pub async fn list_connections(State(state): State<ArcAppState>) -> Json<Vec<ConnectionInfo>> {
+pub async fn list_connections(
+    State(state): State<ArcAppState>,
+) -> Result<Json<Vec<ConnectionInfo>>, ResponseError> {
     let lock = state.connection_pool.lock().await;
-    let connections = lock
-        .list_connections()
-        .map(|(_, connection)| connection.info())
-        .collect();
 
-    Json(connections)
+    let mut connections = Vec::new();
+    for (_, connection) in lock.list_connections() {
+        connections.push(connection.info().await?);
+    }
+
+    Ok(Json(connections))
 }
 
 #[tracing::instrument(name = "Get a connection", skip_all, fields(id = %id))]
@@ -87,7 +91,7 @@ pub async fn get_connection(
 ) -> Result<Json<ConnectionInfo>, ResponseError> {
     let lock = state.connection_pool.lock().await;
     match lock.get_connection(&id) {
-        Some(connection) => Ok(Json(connection.info())),
+        Some(connection) => Ok(Json(connection.info().await?)),
         None => Err(ResponseError::NotFound(
             eyre!("Connection not found: {id}"),
             "Connection not found".to_string(),
@@ -125,8 +129,9 @@ pub async fn update_connection(
 
     let connection = connection_lock
         .get_connection(&id)
-        .map(|c| c.info())
-        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?;
+        .ok_or_else(|| eyre::eyre!("Failed to get connection from pool"))?
+        .info()
+        .await?;
 
     Ok(Json(connection))
 }
@@ -163,5 +168,5 @@ async fn delete_connection_inner(
         }
     }
 
-    Ok(connection.info())
+    Ok(connection.info().await?)
 }
