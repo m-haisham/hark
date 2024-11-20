@@ -39,6 +39,7 @@ impl ConnectionPool {
             id.clone(),
             lazy_settings.timeout,
             lazy_settings.heartbeat,
+            lazy_settings.max_fetch_count,
             background.clone(),
         );
 

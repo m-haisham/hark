@@ -44,6 +44,10 @@ pub struct LazySettings {
     #[serde(default = "default_heartbeat")]
     #[serde(deserialize_with = "duration_millis")]
     pub heartbeat: Duration,
+    /// Maximum number of fetch requests per session, if not set, it will be unlimited.
+    /// This is mostly used for testing purposes, hence it is not exposed in the config file.
+    #[serde(skip)]
+    pub max_fetch_count: Option<usize>,
 }
 
 impl Default for LazySettings {
@@ -51,6 +55,7 @@ impl Default for LazySettings {
         LazySettings {
             timeout: default_timeout(),
             heartbeat: default_heartbeat(),
+            max_fetch_count: None,
         }
     }
 }

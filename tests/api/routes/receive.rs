@@ -164,7 +164,7 @@ async fn lazy_session_should_restart_after_error_if_events_pending() {
     connection["username"] = email_user.login.clone().into();
 
     let mut settings = get_test_settings();
-    settings.lazy.timeout = std::time::Duration::ZERO; // A short timeout to exit after processing the first event
+    settings.lazy.max_fetch_count = 1.into(); // Limit fetches to 1, so we can test session restart
     let app = spawn_app_with_settings(settings).await;
 
     create_connection(&app, connection).await;

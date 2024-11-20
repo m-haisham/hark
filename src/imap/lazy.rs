@@ -47,6 +47,7 @@ pub struct ImapLazySession {
     pub state: Arc<Mutex<ImapLazyState>>,
     pub timeout: Duration,
     pub heartbeat: Duration,
+    pub max_fetch_count: Option<usize>,
     pub command_sender: async_channel::Sender<LazyCommand>,
     pub command_receiver: async_channel::Receiver<LazyCommand>,
     pub background_sender: async_channel::Sender<BackgroundCommand>,
@@ -67,6 +68,7 @@ pub struct ImapLazyWorkerState {
     background_sender: async_channel::Sender<BackgroundCommand>,
     heartbeat: Duration,
     timeout: Duration,
+    max_fetch_count: Option<usize>,
 }
 
 impl ImapLazySession {
@@ -74,6 +76,7 @@ impl ImapLazySession {
         connection_id: ConnectionId,
         timeout: Duration,
         heartbeat: Duration,
+        max_fetch_count: Option<usize>,
         background_sender: async_channel::Sender<BackgroundCommand>,
     ) -> Self {
         let (command_sender, command_receiver) = async_channel::bounded(1024);
@@ -86,6 +89,7 @@ impl ImapLazySession {
             connection_id,
             timeout,
             heartbeat,
+            max_fetch_count,
             command_sender,
             command_receiver,
             event_sender,
@@ -121,6 +125,7 @@ impl ImapLazySession {
             background_sender: self.background_sender.clone(),
             timeout: self.timeout,
             heartbeat: self.heartbeat,
+            max_fetch_count: self.max_fetch_count,
         };
 
         let handle = tokio::spawn(lazy_worker(worker));
@@ -231,6 +236,8 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
     // since that also counts as a heartbeat, we can skip the tick
     heartbeat.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
+    let mut fetch_count = 0;
+
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
@@ -293,6 +300,18 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
                                 .await
                             {
                                 tracing::error!("Failed to send message to background: {:?}", e);
+                                break;
+                            }
+                        }
+
+                        fetch_count += 1;
+
+                        if let Some(max_fetch_count) = worker.max_fetch_count {
+                            if fetch_count >= max_fetch_count {
+                                tracing::info!("Reached max fetch count, logging out");
+                                if let Err(e) = session.logout().await {
+                                    tracing::error!("Failed to logout from session after max fetch count: {e:?}");
+                                }
                                 break;
                             }
                         }
