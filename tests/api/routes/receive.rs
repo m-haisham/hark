@@ -170,18 +170,21 @@ async fn lazy_session_should_restart_after_error_if_events_pending() {
     create_connection(&app, connection).await;
     wait_until_running(&app, "test").await;
 
+    let email_count = 3;
+
     Mock::given(method("POST"))
         .and(path("/callback"))
         .and(callback_type("message_received"))
         .respond_with(wiremock::ResponseTemplate::new(200))
-        .expect(2)
+        .expect(email_count)
         .mount(&app.mock_server)
         .await;
 
     // Act
-    send_test_email(&email_user).await;
-    send_test_email(&email_user).await;
+    for _ in 0..email_count {
+        send_test_email(&email_user).await;
+    }
 
     // Assert
-    wait_until_callback_is_called(&app.mock_server, 2).await;
+    wait_until_callback_is_called(&app.mock_server, email_count as usize).await;
 }
