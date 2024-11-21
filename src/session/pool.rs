@@ -6,7 +6,7 @@ use crate::{
     background::command::BackgroundCommand,
     connection::types::ConnectionId,
     data::Data,
-    imap::lazy::{ImapLazySession, LazyCommand},
+    session::lazy::{ImapLazySession, LazyCommand},
     settings::LazySettings,
 };
 

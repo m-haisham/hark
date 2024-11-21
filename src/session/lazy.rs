@@ -29,11 +29,9 @@ use crate::{
         types::{ConnectionEvent, ConnectionEventKind, ConnectionId},
     },
     data::Data,
-    imap::MessageParseResult,
+    imap::{session::ImapSession, MessageParseResult},
     settings::LazySettings,
 };
-
-use super::ImapSession;
 
 #[derive(Debug)]
 pub enum LazyCommand {

@@ -1,7 +1,6 @@
 mod body;
 pub mod connect;
-pub mod lazy;
-mod session;
+pub mod session;
 pub mod types;
 
 use futures::StreamExt;
@@ -19,8 +18,6 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::imap::body::parse_body;
 use types::Message;
-
-pub use session::ImapSession;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImapListenError {

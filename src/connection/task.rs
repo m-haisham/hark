@@ -25,7 +25,9 @@ use crate::{
     data::Data,
     imap::{
         connect::{ImapAuth, ImapConnectionConfig},
-        handle_idle_event, handle_idle_response, ImapListenError, ImapSession,
+        handle_idle_event, handle_idle_response,
+        session::ImapSession,
+        ImapListenError,
     },
 };
 

@@ -4,7 +4,7 @@ use refresh::refresh_access_token;
 use task::imap_connection_config;
 use types::{Connection, ConnectionAuth, ConnectionId};
 
-use crate::imap::ImapSession;
+use crate::imap::session::ImapSession;
 
 pub mod pool;
 pub mod refresh;

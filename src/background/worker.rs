@@ -5,7 +5,7 @@ use eyre::{eyre, Context};
 use crate::{
     anchor::CallbackRequest,
     connection::types::{ConnectionEvent, ConnectionEventKind, ConnectionState},
-    imap::lazy::LazyCommand,
+    session::lazy::LazyCommand,
     state::ArcAppState,
     task::TaskId,
 };
