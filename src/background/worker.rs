@@ -137,12 +137,31 @@ pub async fn background_worker_inner(
 
                     let mut lock = state.session_pool.lock().await;
 
-                    lock.send_command(id, LazyCommand::FetchSequence(sequence))
+                    let result = lock
+                        .send_command(id, LazyCommand::FetchSequence(sequence))
                         .await
                         .map_err(|e| eyre!(e))
-                        .wrap_err("Failed to send fetch sequence command to session pool")?;
+                        .wrap_err("Failed to send fetch sequence command to session pool");
+
+                    if let Err(err) = result {
+                        tracing::error!("{:?}", err);
+                    }
                 }
             },
+            BackgroundCommand::RestartSession(connection_id) => {
+                tracing::debug!("Restarting session for connection {}", connection_id);
+
+                let lock = state.session_pool.lock().await;
+
+                let result = lock
+                    .start_if_not_running(connection_id)
+                    .await
+                    .wrap_err("Failed to restart session");
+
+                if let Err(err) = result {
+                    tracing::error!("{:?}", err);
+                }
+            }
             BackgroundCommand::Stop => {
                 tracing::info!("Background worker received stop command");
                 break;

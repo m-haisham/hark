@@ -82,7 +82,14 @@ impl ImapLazySession {
         let (event_sender, event_receiver) = mpsc::channel(1024);
 
         let state = Arc::new(Mutex::new(ImapLazyState { worker: None }));
-        tokio::spawn(event_listener(Arc::clone(&state), event_receiver));
+
+        tokio::spawn(event_listener(
+            connection_id.clone(),
+            Arc::clone(&state),
+            event_receiver,
+            command_receiver.clone(),
+            background_sender.clone(),
+        ));
 
         Self {
             connection_id,
@@ -138,7 +145,7 @@ impl ImapLazySession {
         Ok(())
     }
 
-    pub async fn worker_is_running(&self) -> eyre::Result<bool> {
+    pub async fn is_running(&self) -> eyre::Result<bool> {
         let lock = self
             .state
             .lock()
@@ -157,7 +164,7 @@ impl ImapLazySession {
         ),
     )]
     pub async fn send(&self, command: LazyCommand) -> eyre::Result<()> {
-        if !self.worker_is_running().await? {
+        if !self.is_running().await? {
             Span::current().record("worker_is_running", &false);
             tracing::info!("Lazy worker is not running, starting worker");
             self.start().await?;
@@ -174,7 +181,7 @@ impl ImapLazySession {
     }
 
     pub async fn stop(&mut self) -> eyre::Result<()> {
-        if self.worker_is_running().await? {
+        if self.is_running().await? {
             // We can ignore the error here this means the worker has already exited
             let _ = self.command_sender.send(LazyCommand::Exit).await;
         }
@@ -198,24 +205,51 @@ impl ImapLazySession {
     }
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(connection_id = %connection_id))]
 async fn event_listener(
+    connection_id: ConnectionId,
     state: Arc<Mutex<ImapLazyState>>,
     mut event_receiver: mpsc::Receiver<LazyEvent>,
+    command_receiver: async_channel::Receiver<LazyCommand>,
+    background_sender: async_channel::Sender<BackgroundCommand>,
 ) {
     loop {
         match event_receiver.recv().await {
-            Some(LazyEvent::Exit) => match state.lock() {
-                Ok(mut state) => {
-                    state.worker = None;
-                    break;
+            Some(LazyEvent::Exit) => {
+                tracing::info!("Received exit event in lazy session");
+
+                match state.lock() {
+                    Ok(mut state) => {
+                        state.worker = None;
+                    }
+                    Err(e) => {
+                        // FIXME: this is a critical error, we should replace the whole session in the pool
+                        // and drain the command channel to the new session
+                        tracing::error!("Failed to acquire lock: {:?}", e);
+                        break;
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to acquire lock: {:?}", e);
-                    break;
+
+                if !command_receiver.is_empty() {
+                    tracing::info!("More commands in queue, restarting session after exit");
+
+                    let result = background_sender
+                        .send(BackgroundCommand::RestartSession(connection_id.clone()))
+                        .await
+                        .map_err(|e| eyre!(e))
+                        .wrap_err("Failed to send restart session command");
+
+                    // The only scenario this can happen is if background thread is stopped. In that case
+                    // no point in trying to start the session again. Hence, why this is a warning.
+                    if let Err(e) = result {
+                        tracing::warn!("{:?}", e);
+                    }
                 }
-            },
-            None => break,
+            }
+            None => {
+                tracing::info!("Event channel closed, exiting lazy session");
+                break;
+            }
         }
     }
 }
@@ -323,8 +357,6 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
     }
 
     if let Err(e) = worker.event_sender.send(LazyEvent::Exit).await {
-        // This is a warning because this shouldn't happen and would indicate a bug
-        // But otherwise it's not a big deal
-        tracing::warn!("Failed to send lazy exit event: {e:?}");
+        tracing::error!("Failed to send lazy exit event: {e:?}");
     }
 }

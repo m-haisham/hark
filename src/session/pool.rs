@@ -71,6 +71,22 @@ impl SessionPool {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all, fields(connection_id = %connection_id))]
+    pub async fn start_if_not_running(&self, connection_id: ConnectionId) -> eyre::Result<()> {
+        let Some(session) = self.pool.get(&connection_id) else {
+            tracing::error!("Tried to start non-existing session: {}", connection_id);
+            return Ok(());
+        };
+
+        if session.is_running().await? {
+            return Ok(());
+        }
+
+        session.start().await.wrap_err("Failed to start session")?;
+
+        Ok(())
+    }
+
     pub async fn stop_all(&mut self) {
         for (_, handle) in self.pool.iter_mut() {
             handle.stop().await.expect("Failed to stop session");
