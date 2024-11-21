@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use eyre::{eyre, Context};
+
 use crate::{
     anchor::CallbackRequest,
     connection::types::{ConnectionEvent, ConnectionEventKind, ConnectionState},
+    imap::lazy::LazyCommand,
     state::ArcAppState,
     task::TaskId,
 };
@@ -108,7 +111,7 @@ pub async fn background_worker_inner(
                         })
                         .await;
                 }
-                ConnectionEventKind::MessageReceived(message) => {
+                ConnectionEventKind::MessageParsed(message) => {
                     tracing::debug!("Received message for connection {}", id);
 
                     {
@@ -128,6 +131,16 @@ pub async fn background_worker_inner(
                             message,
                         })
                         .await;
+                }
+                ConnectionEventKind::MessageSeq(sequence) => {
+                    tracing::debug!("Received message sequence for connection {}", id);
+
+                    let mut lock = state.session_pool.lock().await;
+
+                    lock.send_command(id, LazyCommand::FetchSequence(sequence))
+                        .await
+                        .map_err(|e| eyre!(e))
+                        .wrap_err("Failed to send fetch sequence command to session pool")?;
                 }
             },
             BackgroundCommand::Stop => {

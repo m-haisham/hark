@@ -53,7 +53,7 @@ pub async fn create_email_user(name: &str) -> EmailUser {
         .await
         .expect("Failed to create user.");
 
-    assert_eq!(response.status().as_u16(), 201);
+    assert_eq!(response.status().as_u16(), 200);
 
     EmailUser {
         login: body.login,

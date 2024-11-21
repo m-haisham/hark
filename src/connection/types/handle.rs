@@ -1,16 +1,8 @@
-use std::sync::Arc;
-
-use serde::Serialize;
-use tokio::sync::{
-    mpsc::{self, error::SendError},
-    Mutex,
-};
-
-use crate::{
-    connection::refresh::get_connection_from_store, data::Data, imap::lazy::ImapLazySession,
-};
-
 use super::{Connection, ConnectionCommand, ConnectionId, ConnectionState};
+use crate::{connection::refresh::get_connection_from_store, data::Data};
+use serde::Serialize;
+use std::sync::Arc;
+use tokio::sync::mpsc::{self, error::SendError};
 
 #[derive(Debug)]
 pub struct ConnectionHandle {
@@ -18,7 +10,6 @@ pub struct ConnectionHandle {
     pub state: ConnectionState,
     data: Arc<Data>,
     sender: mpsc::Sender<ConnectionCommand>,
-    lazy: Arc<Mutex<ImapLazySession>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,18 +20,12 @@ pub struct ConnectionInfo {
 }
 
 impl ConnectionHandle {
-    pub fn new(
-        id: ConnectionId,
-        data: Arc<Data>,
-        sender: mpsc::Sender<ConnectionCommand>,
-        lazy: Arc<Mutex<ImapLazySession>>,
-    ) -> Self {
+    pub fn new(id: ConnectionId, data: Arc<Data>, sender: mpsc::Sender<ConnectionCommand>) -> Self {
         Self {
             id,
             state: ConnectionState::Starting,
             data,
             sender,
-            lazy,
         }
     }
 
@@ -63,14 +48,5 @@ impl ConnectionHandle {
         // The task is already stopped if the receiver is dropped,
         // so we can ignore the error.
         let _ = self.send(ConnectionCommand::Stop).await;
-
-        // FIXME: This error should not be ignored
-        let mut lazy = self.lazy.lock().await;
-        let _ = lazy.stop().await;
-    }
-
-    pub async fn wait_for_exit(&mut self) {
-        let lazy = self.lazy.lock().await;
-        let _ = lazy.wait_for_exit().await;
     }
 }

@@ -8,7 +8,6 @@ use crate::{
     background::command::BackgroundCommand,
     connection::task::{run_connection_task, ConnectionTask},
     data::Data,
-    imap::lazy::ImapLazySession,
     settings::LazySettings,
 };
 
@@ -43,24 +42,14 @@ impl ConnectionPool {
 
         let (sender, receiver) = tokio::sync::mpsc::channel(20);
 
-        let lazy = ImapLazySession::new(
-            id.clone(),
-            Arc::clone(&self.data),
-            background.clone(),
-            lazy_settings.clone(),
-        );
-
-        let lazy = Arc::new(tokio::sync::Mutex::new(lazy));
-
         let task = ConnectionTask {
             id: id.clone(),
             data: Arc::clone(&self.data),
             receiver,
             background,
-            lazy: Arc::clone(&lazy),
         };
 
-        let handle = ConnectionHandle::new(id.clone(), Arc::clone(&self.data), sender, lazy);
+        let handle = ConnectionHandle::new(id.clone(), Arc::clone(&self.data), sender);
         self.pool.insert(id.clone(), handle);
 
         let join_handle = tokio::spawn(run_connection_task(task));
@@ -92,10 +81,6 @@ impl ConnectionPool {
     }
 
     pub async fn join_all(&mut self) {
-        for (_, handle) in self.pool.iter_mut() {
-            handle.wait_for_exit().await;
-        }
-
         let mut handles = Vec::new();
         for (_, handle) in self.handles.drain() {
             handles.push(handle);

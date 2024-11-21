@@ -290,7 +290,7 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
                                 .background_sender
                                 .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
                                     id: worker.connection_id.clone(),
-                                    event: ConnectionEventKind::MessageReceived(message),
+                                    event: ConnectionEventKind::MessageParsed(message),
                                 }))
                                 .await
                             {

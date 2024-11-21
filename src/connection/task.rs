@@ -25,9 +25,7 @@ use crate::{
     data::Data,
     imap::{
         connect::{ImapAuth, ImapConnectionConfig},
-        handle_idle_event, handle_idle_response,
-        lazy::{ImapLazySession, LazyCommand},
-        ImapListenError, ImapSession,
+        handle_idle_event, handle_idle_response, ImapListenError, ImapSession,
     },
 };
 
@@ -39,13 +37,11 @@ pub struct ConnectionTask {
     pub data: Arc<Data>,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
     pub background: async_channel::Sender<BackgroundCommand>,
-    pub lazy: Arc<Mutex<ImapLazySession>>,
 }
 
 #[derive(Debug)]
 pub struct ConnectionTaskState {
     pub stop: bool,
-    pub lazy: Arc<Mutex<ImapLazySession>>,
 }
 
 #[instrument(name = "Listen for commands to connection", skip_all, fields(id = %id))]
@@ -95,7 +91,6 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         data,
         receiver,
         background,
-        lazy,
     } = task;
 
     background
@@ -108,10 +103,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         .wrap_err("Failed to send starting event to background task")?;
 
     // FIXME: Can be optimized to only use Arc<Mutex<_>> for the stop flag (mutable part)
-    let state = Arc::new(Mutex::new(ConnectionTaskState {
-        stop: false,
-        lazy: lazy.clone(),
-    }));
+    let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
 
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
@@ -161,10 +153,10 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let result = match session {
             ImapSession::Tcp(session) => {
-                idle(&id, inner_connection, session, &lazy, state, mailbox).await
+                idle(&id, inner_connection, session, state, mailbox, &background).await
             }
             ImapSession::Tls(session) => {
-                idle(&id, inner_connection, session, &lazy, state, mailbox).await
+                idle(&id, inner_connection, session, state, mailbox, &background).await
             }
         };
 
@@ -252,9 +244,9 @@ async fn idle<T>(
     id: &ConnectionId,
     connection: Connection,
     mut session: Session<T>,
-    lazy: &Arc<Mutex<ImapLazySession>>,
     state: Arc<Mutex<ConnectionTaskState>>,
     mut mailbox: Mailbox,
+    background_sender: &async_channel::Sender<BackgroundCommand>,
 ) -> Result<(), IdleError>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
@@ -321,12 +313,14 @@ where
             .wrap_err("Failed to handle IDLE event")?;
 
         if let Some(sequence) = seq {
-            let lazy = lazy.lock().await;
-            let command = LazyCommand::FetchSequence(sequence);
-            lazy.send(command)
+            background_sender
+                .send(BackgroundCommand::ConnectionEvent(ConnectionEvent {
+                    id: id.clone(),
+                    event: ConnectionEventKind::MessageSeq(sequence),
+                }))
                 .await
                 .map_err(|e| eyre!(e))
-                .wrap_err("Failed to send command to lazy worker")?;
+                .wrap_err("Failed to send message sequence to background task")?;
         }
     }
 

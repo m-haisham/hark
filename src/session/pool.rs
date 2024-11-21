@@ -32,18 +32,26 @@ impl SessionPool {
         }
     }
 
+    #[tracing::instrument(skip_all, fields(connection_id = %connection_id, command = ?command))]
     pub async fn send_command(
         &mut self,
         connection_id: ConnectionId,
         command: LazyCommand,
     ) -> eyre::Result<()> {
         if let Some(session) = self.pool.get(&connection_id) {
+            tracing::info!(
+                "Sending command to existing session handle: {}",
+                connection_id
+            );
+
             session
                 .send(command)
                 .await
                 .map_err(|e| eyre!(e))
                 .wrap_err("Failed to send command")?;
         } else {
+            tracing::info!("Creating new session handle: {}", connection_id);
+
             let session: ImapLazySession = ImapLazySession::new(
                 connection_id.clone(),
                 Arc::clone(&self.data),
