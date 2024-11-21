@@ -7,6 +7,7 @@ use hark::{
     background::BackgroundPool,
     connection::pool::ConnectionPool,
     data::Data,
+    session::pool::SessionPool,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
     state::AppState,
@@ -52,6 +53,12 @@ async fn main() -> eyre::Result<()> {
         );
     }
 
+    let session_pool = SessionPool::new(
+        Arc::clone(&data),
+        background_pool.sender(),
+        settings.lazy.clone(),
+    );
+
     let addr = (settings.server.host.as_str(), settings.server.port);
     let listener = TcpListener::bind(addr)
         .await
@@ -61,6 +68,7 @@ async fn main() -> eyre::Result<()> {
         data,
         connection_pool: Mutex::new(connection_pool),
         background_pool: Mutex::new(background_pool),
+        session_pool: Mutex::new(session_pool),
         anchor,
         settings,
     });
@@ -81,6 +89,13 @@ async fn main() -> eyre::Result<()> {
         let mut connection_lock = state.connection_pool.lock().await;
         connection_lock.stop_all().await;
         connection_lock.join_all().await;
+    }
+
+    {
+        tracing::info!("Stopping all session tasks...");
+        let mut session_lock = state.session_pool.lock().await;
+        session_lock.stop_all().await;
+        session_lock.join_all().await;
     }
 
     {

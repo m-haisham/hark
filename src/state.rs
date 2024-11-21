@@ -4,7 +4,7 @@ use futures::lock::Mutex;
 
 use crate::{
     anchor::Anchor, background::BackgroundPool, connection::pool::ConnectionPool, data::Data,
-    settings::Settings,
+    session::pool::SessionPool, settings::Settings,
 };
 
 pub type ArcAppState = Arc<AppState>;
@@ -14,6 +14,7 @@ pub struct AppState {
     pub data: Arc<Data>,
     pub connection_pool: Mutex<ConnectionPool>,
     pub background_pool: Mutex<BackgroundPool>,
+    pub session_pool: Mutex<SessionPool>,
     pub anchor: Anchor,
     pub settings: Settings,
 }

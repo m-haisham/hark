@@ -45,10 +45,9 @@ impl ConnectionPool {
 
         let lazy = ImapLazySession::new(
             id.clone(),
-            lazy_settings.timeout,
-            lazy_settings.heartbeat,
-            lazy_settings.max_fetch_count,
+            Arc::clone(&self.data),
             background.clone(),
+            lazy_settings.clone(),
         );
 
         let lazy = Arc::new(tokio::sync::Mutex::new(lazy));

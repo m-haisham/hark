@@ -14,10 +14,7 @@
 //! This session will recieve commands from the idle thread and then fetch the messages
 //! and push them to the background thread.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 use async_channel::RecvError;
 use eyre::{eyre, Context};
@@ -26,17 +23,25 @@ use tracing::{instrument, Span};
 
 use crate::{
     background::command::BackgroundCommand,
-    connection::types::{ConnectionEvent, ConnectionEventKind, ConnectionId},
+    connection::{
+        refresh::get_connection_from_store,
+        task::imap_connection_config,
+        types::{ConnectionEvent, ConnectionEventKind, ConnectionId},
+    },
+    data::Data,
     imap::MessageParseResult,
+    settings::LazySettings,
 };
 
-use super::{connect::ImapConnectionConfig, ImapSession};
+use super::ImapSession;
 
+#[derive(Debug)]
 pub enum LazyCommand {
     FetchSequence(String),
     Exit,
 }
 
+#[derive(Debug)]
 pub enum LazyEvent {
     Exit,
 }
@@ -44,14 +49,13 @@ pub enum LazyEvent {
 #[derive(Debug)]
 pub struct ImapLazySession {
     pub connection_id: ConnectionId,
+    pub data: Arc<Data>,
     pub state: Arc<Mutex<ImapLazyState>>,
-    pub timeout: Duration,
-    pub heartbeat: Duration,
-    pub max_fetch_count: Option<usize>,
     pub command_sender: async_channel::Sender<LazyCommand>,
     pub command_receiver: async_channel::Receiver<LazyCommand>,
     pub background_sender: async_channel::Sender<BackgroundCommand>,
     pub event_sender: mpsc::Sender<LazyEvent>,
+    pub settings: LazySettings,
 }
 
 #[derive(Debug)]
@@ -66,18 +70,15 @@ pub struct ImapLazyWorkerState {
     command_receiver: async_channel::Receiver<LazyCommand>,
     event_sender: mpsc::Sender<LazyEvent>,
     background_sender: async_channel::Sender<BackgroundCommand>,
-    heartbeat: Duration,
-    timeout: Duration,
-    max_fetch_count: Option<usize>,
+    settings: LazySettings,
 }
 
 impl ImapLazySession {
     pub fn new(
         connection_id: ConnectionId,
-        timeout: Duration,
-        heartbeat: Duration,
-        max_fetch_count: Option<usize>,
+        data: Arc<Data>,
         background_sender: async_channel::Sender<BackgroundCommand>,
+        settings: LazySettings,
     ) -> Self {
         let (command_sender, command_receiver) = async_channel::bounded(1024);
         let (event_sender, event_receiver) = mpsc::channel(1024);
@@ -87,14 +88,13 @@ impl ImapLazySession {
 
         Self {
             connection_id,
-            timeout,
-            heartbeat,
-            max_fetch_count,
+            data,
             command_sender,
             command_receiver,
             event_sender,
             background_sender,
             state,
+            settings,
         }
     }
 
@@ -105,15 +105,16 @@ impl ImapLazySession {
             mailbox,
         ),
     )]
-    pub async fn start(
-        &mut self,
-        config: &ImapConnectionConfig,
-        mailbox: &str,
-    ) -> eyre::Result<()> {
-        let mut session = ImapSession::connect(config).await?;
+    pub async fn start(&self) -> eyre::Result<()> {
+        let connection = get_connection_from_store(&self.data, &self.connection_id)
+            .await
+            .wrap_err("Failed to get connection from store")?;
+
+        let connection_config = imap_connection_config(&connection);
+        let mut session = ImapSession::connect(&connection_config).await?;
 
         session
-            .select(mailbox)
+            .select(&connection.mailbox)
             .await
             .wrap_err("Failed to select mailbox while lazy session start")?;
 
@@ -123,9 +124,7 @@ impl ImapLazySession {
             command_receiver: self.command_receiver.clone(),
             event_sender: self.event_sender.clone(),
             background_sender: self.background_sender.clone(),
-            timeout: self.timeout,
-            heartbeat: self.heartbeat,
-            max_fetch_count: self.max_fetch_count,
+            settings: self.settings.clone(),
         };
 
         let handle = tokio::spawn(lazy_worker(worker));
@@ -155,19 +154,15 @@ impl ImapLazySession {
         skip_all,
         fields(
             connection_id = %self.connection_id,
+            command = ?command,
             worker_is_running = tracing::field::Empty,
         ),
     )]
-    pub async fn send(
-        &mut self,
-        config: &ImapConnectionConfig,
-        mailbox: &str,
-        command: LazyCommand,
-    ) -> eyre::Result<()> {
+    pub async fn send(&self, command: LazyCommand) -> eyre::Result<()> {
         if !self.worker_is_running().await? {
             Span::current().record("worker_is_running", &false);
             tracing::info!("Lazy worker is not running, starting worker");
-            self.start(config, mailbox).await?;
+            self.start().await?;
         } else {
             Span::current().record("worker_is_running", &true);
         }
@@ -193,14 +188,14 @@ impl ImapLazySession {
         let mut state = self.state.lock().expect("Failed to acquire lock");
 
         if let Some(worker) = state.worker.take() {
-            drop(state);
+            drop(state); // Release the lock before waiting for the worker
 
             tracing::info!("Waiting for lazy worker to exit");
             if let Err(e) = worker.await {
                 tracing::error!("Lazy worker exited with error: {:?}", e);
             }
         } else {
-            tracing::info!("Lazy worker is not running, nothing to wait for");
+            tracing::debug!("Lazy worker is not running, nothing to wait for");
         }
     }
 }
@@ -230,7 +225,7 @@ async fn event_listener(
 #[instrument(skip_all)]
 pub async fn lazy_worker(worker: ImapLazyWorkerState) {
     let mut session = worker.session;
-    let mut heartbeat = tokio::time::interval(worker.heartbeat);
+    let mut heartbeat = tokio::time::interval(worker.settings.heartbeat);
 
     // The only scenario where we would skip a tick is when fetching messages
     // since that also counts as a heartbeat, we can skip the tick
@@ -247,7 +242,7 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
                     break;
                 }
             }
-            _ = tokio::time::sleep(worker.timeout) => {
+            _ = tokio::time::sleep(worker.settings.timeout) => {
                 tracing::info!("Session timed out, logging out");
                 if let Err(e) = session.logout().await {
                     tracing::error!("Failed to logout from session after timeout: {e:?}");
@@ -306,7 +301,7 @@ pub async fn lazy_worker(worker: ImapLazyWorkerState) {
 
                         fetch_count += 1;
 
-                        if let Some(max_fetch_count) = worker.max_fetch_count {
+                        if let Some(max_fetch_count) = worker.settings.max_fetch_count {
                             if fetch_count >= max_fetch_count {
                                 tracing::info!("Reached max fetch count, logging out");
                                 if let Err(e) = session.logout().await {

@@ -129,9 +129,9 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         let inner_connection = connection.clone();
         let state = Arc::clone(&state);
 
-        let imap_connection = imap_connection_config(&inner_connection).await?;
+        let connection_config = imap_connection_config(&inner_connection);
 
-        let mut session = ImapSession::connect(&imap_connection)
+        let mut session = ImapSession::connect(&connection_config)
             .await
             .map_err(|e| eyre::eyre!(e))
             .wrap_err("Failed to connect to IMAP server")?;
@@ -208,7 +208,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
     Ok(())
 }
 
-pub async fn imap_connection_config(connection: &Connection) -> eyre::Result<ImapConnectionConfig> {
+pub fn imap_connection_config(connection: &Connection) -> ImapConnectionConfig {
     let auth = match &connection.auth {
         ConnectionAuth::Password { password } => ImapAuth::LOGIN {
             username: connection.username.clone(),
@@ -236,7 +236,7 @@ pub async fn imap_connection_config(connection: &Connection) -> eyre::Result<Ima
         flavour,
     };
 
-    Ok(imap_connection)
+    imap_connection
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -320,12 +320,10 @@ where
             .map_err(|e| eyre!(e))
             .wrap_err("Failed to handle IDLE event")?;
 
-        let config = imap_connection_config(&connection).await?;
-
         if let Some(sequence) = seq {
-            let mut lazy = lazy.lock().await;
+            let lazy = lazy.lock().await;
             let command = LazyCommand::FetchSequence(sequence);
-            lazy.send(&config, &connection.mailbox, command)
+            lazy.send(command)
                 .await
                 .map_err(|e| eyre!(e))
                 .wrap_err("Failed to send command to lazy worker")?;

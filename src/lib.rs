@@ -5,6 +5,7 @@ pub mod data;
 pub mod imap;
 pub mod response;
 pub mod routes;
+pub mod session;
 pub mod settings;
 pub mod startup;
 pub mod state;
