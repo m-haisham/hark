@@ -109,12 +109,12 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
-    let connection = get_connection_from_store(&data, &id)
+    let mut connection = get_connection_from_store(&data, &id)
         .await
         .wrap_err("Failed to get connection from data store")?;
 
     if is_connection_auth_refresh_needed(&connection).await {
-        refresh_connection_auth(&data, &id)
+        connection = refresh_connection_auth(&data, &id)
             .await
             .wrap_err("Failed to refresh connection")?;
     }
@@ -172,7 +172,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                     "Connection task terminated due to expired access token, refreshing token."
                 );
 
-                refresh_connection_auth(&data, &id)
+                connection = refresh_connection_auth(&data, &id)
                     .await
                     .wrap_err("Failed to refresh connection")?;
             }
@@ -181,7 +181,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                 // TODO: Add retry with backoff strategy, e.g.:
                 // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
 
-                refresh_connection_auth(&data, &id)
+                connection = refresh_connection_auth(&data, &id)
                     .await
                     .wrap_err("Failed to refresh connection")?;
             }

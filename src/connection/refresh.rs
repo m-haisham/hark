@@ -35,7 +35,7 @@ pub async fn is_connection_auth_refresh_needed(connection: &Connection) -> bool 
 pub async fn refresh_connection_auth(
     data: &Data,
     connection_id: &ConnectionId,
-) -> eyre::Result<()> {
+) -> eyre::Result<Connection> {
     let Some(connection) = data.connections.get(connection_id) else {
         return Err(eyre!("Connection not found"));
     };
@@ -46,7 +46,7 @@ pub async fn refresh_connection_auth(
         *oauth2 = refresh_access_token(connection_id, oauth2).await?;
     }
 
-    Ok(())
+    Ok(Connection::clone(&connection))
 }
 
 #[tracing::instrument(
