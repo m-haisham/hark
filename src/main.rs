@@ -48,7 +48,7 @@ async fn main() -> eyre::Result<()> {
         connection_pool.spawn(
             id.clone(),
             connection.clone(),
-            &settings.lazy,
+            &settings,
             background_pool.sender(),
         );
     }

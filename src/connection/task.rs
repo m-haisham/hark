@@ -27,6 +27,8 @@ use crate::{
         session::ImapSession,
         ImapListenError,
     },
+    settings::IdleSettings,
+    window::EventWindow,
 };
 
 use super::types::{Connection, ConnectionAuth, ConnectionCommand, ConnectionId};
@@ -37,6 +39,7 @@ pub struct ConnectionTask {
     pub data: Arc<Data>,
     pub receiver: mpsc::Receiver<ConnectionCommand>,
     pub background: async_channel::Sender<BackgroundCommand>,
+    pub idle_settings: IdleSettings,
 }
 
 #[derive(Debug)]
@@ -91,6 +94,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         data,
         receiver,
         background,
+        idle_settings,
     } = task;
 
     background
@@ -102,10 +106,10 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         .map_err(|e| eyre::eyre!(e))
         .wrap_err("Failed to send starting event to background task")?;
 
-    // FIXME: Can be optimized to only use Arc<Mutex<_>> for the stop flag (mutable part)
     let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
-
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
+
+    let mut error_window = EventWindow::new();
 
     loop {
         let connection = get_refreshed_connection_from_store(&data, &id)
@@ -168,10 +172,17 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                     .wrap_err("Failed to refresh connection")?;
             }
             Err(e) => {
-                tracing::error!("Retrying failed connection with error: {:?}", e);
-                // TODO: Add retry with backoff strategy, e.g.:
-                // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
+                // FIXME: missing tests
+                error_window.push(idle_settings.error_window);
+                if error_window.exceeds_threshold(idle_settings.error_threshold) {
+                    tracing::error!(
+                        "Connection task exceeded error threshold, aborting with error: {:?}",
+                        e
+                    );
+                    break;
+                }
 
+                tracing::error!("Retrying failed connection with error: {:?}", e);
                 refresh_connection_auth(&data, &id)
                     .await
                     .wrap_err("Failed to refresh connection")?;
@@ -179,6 +190,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         }
     }
 
+    // FIXME: should abort the listen handle during errors
     tracing::debug!("Aborting command listening task");
     listen_handle.abort();
 
@@ -268,8 +280,6 @@ where
 
         let response = match response_result {
             Ok(response) => response,
-            // If its an IO error and the error message contains "DONE", it means the connection
-            // was terminated by the server when access token expired or revoked
             Err(e) => return Err(IdleError::Other(eyre!(e).wrap_err("Error during IDLE"))),
         };
 

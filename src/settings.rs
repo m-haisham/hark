@@ -23,6 +23,8 @@ pub fn get_config(file: &str) -> Result<Settings, config::ConfigError> {
 pub struct Settings {
     pub server: ServerSettings,
     #[serde(default)]
+    pub idle: IdleSettings,
+    #[serde(default)]
     pub lazy: LazySettings,
     #[serde(default)]
     pub connections: HashMap<ConnectionId, Connection>,
@@ -34,6 +36,32 @@ pub struct Settings {
 pub struct ServerSettings {
     pub host: String,
     pub port: u16,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct IdleSettings {
+    #[serde(default = "default_error_window")]
+    #[serde(deserialize_with = "duration_millis")]
+    pub error_window: Duration,
+    #[serde(default = "default_error_threshold")]
+    pub error_threshold: usize,
+}
+
+impl Default for IdleSettings {
+    fn default() -> Self {
+        IdleSettings {
+            error_window: default_error_window(),
+            error_threshold: default_error_threshold(),
+        }
+    }
+}
+
+fn default_error_window() -> Duration {
+    Duration::from_secs(5 * 60)
+}
+
+fn default_error_threshold() -> usize {
+    5
 }
 
 #[derive(Deserialize, Debug, Clone)]

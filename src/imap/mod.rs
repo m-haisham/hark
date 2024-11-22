@@ -34,7 +34,7 @@ pub enum ImapListenError {
 pub async fn imap_lookback<T>(
     session: &mut Session<T>,
     duration: Duration,
-) -> Result<Vec<Message>, ImapListenError>
+) -> async_imap::error::Result<Vec<Message>>
 where
     T: AsyncRead + AsyncWrite + Debug + Send + Unpin,
 {
@@ -49,7 +49,7 @@ where
         .into_iter()
         .flat_map(|v| match v {
             MessageParseResult::Message(m) => Some(Ok(m)),
-            MessageParseResult::ImapError(e) => Some(Err(ImapListenError::Imap(e))),
+            MessageParseResult::ImapError(e) => Some(Err(e)),
             MessageParseResult::BodyNotFound(_) => None,
         })
         .collect()

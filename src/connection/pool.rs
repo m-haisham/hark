@@ -8,7 +8,7 @@ use crate::{
     background::command::BackgroundCommand,
     connection::task::{run_connection_task, ConnectionTask},
     data::Data,
-    settings::LazySettings,
+    settings::Settings,
 };
 
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl ConnectionPool {
         &mut self,
         id: ConnectionId,
         connection: Connection,
-        lazy_settings: &LazySettings,
+        settings: &Settings,
         background: async_channel::Sender<BackgroundCommand>,
     ) {
         // Insert the connection into the data store
@@ -47,6 +47,7 @@ impl ConnectionPool {
             data: Arc::clone(&self.data),
             receiver,
             background,
+            idle_settings: settings.idle.clone(),
         };
 
         let handle = ConnectionHandle::new(id.clone(), Arc::clone(&self.data), sender);
