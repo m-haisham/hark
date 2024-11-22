@@ -21,6 +21,25 @@ pub async fn get_connection_from_store(
     Ok(Connection::clone(&lock))
 }
 
+pub async fn get_refreshed_connection_from_store(
+    data: &Data,
+    connection_id: &ConnectionId,
+) -> eyre::Result<Connection> {
+    let Some(connection) = data.connections.get(connection_id) else {
+        return Err(eyre!("Connection not found"));
+    };
+
+    let mut connection = connection.lock().await;
+
+    if is_connection_auth_refresh_needed(&connection).await {
+        *connection = refresh_connection_auth(data, connection_id)
+            .await
+            .wrap_err("Failed to refresh connection")?;
+    }
+
+    Ok(Connection::clone(&connection))
+}
+
 pub async fn is_connection_auth_refresh_needed(connection: &Connection) -> bool {
     if let ConnectionAuth::OAuth2(oauth2) = &connection.auth {
         // Update the access token if it is about to expire, expired, or expires_at is not provided

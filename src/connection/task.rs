@@ -17,9 +17,7 @@ use tracing::instrument;
 use crate::{
     background::command::BackgroundCommand,
     connection::{
-        refresh::{
-            get_connection_from_store, is_connection_auth_refresh_needed, refresh_connection_auth,
-        },
+        refresh::{get_refreshed_connection_from_store, refresh_connection_auth},
         types::{ConnectionEvent, ConnectionEventKind, ImapFlavour},
     },
     data::Data,
@@ -109,21 +107,14 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
     let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
 
-    let mut connection = get_connection_from_store(&data, &id)
-        .await
-        .wrap_err("Failed to get connection from data store")?;
-
-    if is_connection_auth_refresh_needed(&connection).await {
-        connection = refresh_connection_auth(&data, &id)
-            .await
-            .wrap_err("Failed to refresh connection")?;
-    }
-
     loop {
-        let inner_connection = connection.clone();
+        let connection = get_refreshed_connection_from_store(&data, &id)
+            .await
+            .wrap_err("Failed to get refreshed connection from data store")?;
+
         let state = Arc::clone(&state);
 
-        let connection_config = imap_connection_config(&inner_connection);
+        let connection_config = imap_connection_config(&connection);
 
         let mut session = ImapSession::connect(&connection_config)
             .await
@@ -151,14 +142,14 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
             return Ok(());
         }
 
-        let mailbox = session.select(&inner_connection.mailbox).await?;
+        let mailbox = session.select(&connection.mailbox).await?;
 
         let result = match session {
             ImapSession::Tcp(session) => {
-                idle(&id, inner_connection, session, state, mailbox, &background).await
+                idle(&id, connection, session, state, mailbox, &background).await
             }
             ImapSession::Tls(session) => {
-                idle(&id, inner_connection, session, state, mailbox, &background).await
+                idle(&id, connection, session, state, mailbox, &background).await
             }
         };
 
@@ -172,7 +163,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                     "Connection task terminated due to expired access token, refreshing token."
                 );
 
-                connection = refresh_connection_auth(&data, &id)
+                refresh_connection_auth(&data, &id)
                     .await
                     .wrap_err("Failed to refresh connection")?;
             }
@@ -181,7 +172,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
                 // TODO: Add retry with backoff strategy, e.g.:
                 // maxmimum retry count with in a time period (e.g. 5 times in 1 hour)
 
-                connection = refresh_connection_auth(&data, &id)
+                refresh_connection_auth(&data, &id)
                     .await
                     .wrap_err("Failed to refresh connection")?;
             }

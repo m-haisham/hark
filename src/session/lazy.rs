@@ -24,9 +24,7 @@ use tracing::{instrument, Span};
 use crate::{
     background::command::BackgroundCommand,
     connection::{
-        refresh::{
-            get_connection_from_store, is_connection_auth_refresh_needed, refresh_connection_auth,
-        },
+        refresh::get_refreshed_connection_from_store,
         task::imap_connection_config,
         types::{ConnectionEvent, ConnectionEventKind, ConnectionId},
     },
@@ -113,16 +111,9 @@ impl ImapLazySession {
         ),
     )]
     pub async fn start(&self) -> eyre::Result<()> {
-        // FIXME: can optimize this to remove double lock on connections
-        let mut connection = get_connection_from_store(&self.data, &self.connection_id)
+        let connection = get_refreshed_connection_from_store(&self.data, &self.connection_id)
             .await
-            .wrap_err("Failed to get connection from store")?;
-
-        if is_connection_auth_refresh_needed(&connection).await {
-            connection = refresh_connection_auth(&self.data, &self.connection_id)
-                .await
-                .wrap_err("Failed to refresh connection")?;
-        }
+            .wrap_err("Failed to get refreshed connection from store")?;
 
         let connection_config = imap_connection_config(&connection);
         let mut session = ImapSession::connect(&connection_config).await?;
