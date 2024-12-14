@@ -17,8 +17,8 @@ pub struct NewEmailUser {
 
 #[derive(Debug, Deserialize)]
 pub struct EmailUser {
-    login: String,
-    email: String,
+    pub login: String,
+    pub email: String,
 }
 
 #[tracing::instrument]
@@ -61,7 +61,7 @@ pub async fn create_email_user(name: &str) -> EmailUser {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn connection_should_send_message_to_callback() {
     // Arrange
     let email_user = create_email_user("callback").await;
@@ -69,7 +69,7 @@ async fn connection_should_send_message_to_callback() {
     connection["username"] = email_user.login.clone().into();
 
     let app = spawn_app().await;
-    create_connection(&app, connection).await;
+    create_connection(&app, &connection).await;
     wait_until_running(&app, "test").await;
 
     Mock::given(method("POST"))
@@ -84,10 +84,10 @@ async fn connection_should_send_message_to_callback() {
     send_test_email(&email_user).await;
 
     // Assert
-    wait_until_callback_is_called(&app.mock_server, 1).await;
+    wait_until_callback_is_called(&app.mock_server, "message_received", 1).await;
 }
 
-async fn send_test_email(email_user: &EmailUser) {
+pub async fn send_test_email(email_user: &EmailUser) {
     use lettre::{
         transport::smtp::{authentication::Credentials, client::Tls},
         AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
@@ -126,7 +126,11 @@ async fn send_test_email(email_user: &EmailUser) {
     mailer.send(email).await.expect("Failed to send email.");
 }
 
-async fn wait_until_callback_is_called(mock_server: &MockServer, expected_requests: usize) {
+pub async fn wait_until_callback_is_called(
+    mock_server: &MockServer,
+    kind: &str,
+    expected_requests: usize,
+) {
     let mut last_count = 0;
 
     for _ in 0..5 {
@@ -140,7 +144,7 @@ async fn wait_until_callback_is_called(mock_server: &MockServer, expected_reques
         let message_received_requests = requests
             .iter()
             .flat_map(|r| str::from_utf8(&r.body).ok())
-            .filter(|b| b.contains("message_received"))
+            .filter(|b| b.contains(kind))
             .collect::<Vec<_>>();
 
         if message_received_requests.len() >= expected_requests {
@@ -167,7 +171,7 @@ async fn lazy_session_should_restart_after_error_if_events_pending() {
     settings.lazy.max_fetch_count = 1.into(); // Limit fetches to 1, so we can test session restart
     let app = spawn_app_with_settings(settings).await;
 
-    create_connection(&app, connection).await;
+    create_connection(&app, &connection).await;
     wait_until_running(&app, "test").await;
 
     let email_count = 3;
@@ -186,5 +190,5 @@ async fn lazy_session_should_restart_after_error_if_events_pending() {
     }
 
     // Assert
-    wait_until_callback_is_called(&app.mock_server, email_count as usize).await;
+    wait_until_callback_is_called(&app.mock_server, "message_received", email_count as usize).await;
 }

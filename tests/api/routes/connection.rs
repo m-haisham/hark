@@ -2,14 +2,14 @@ use itertools::Itertools;
 
 use crate::helpers::{spawn_app, TestApp};
 
-pub async fn create_connection(app: &TestApp, connection: serde_json::Value) -> serde_json::Value {
+pub async fn create_connection(app: &TestApp, connection: &serde_json::Value) -> serde_json::Value {
     let response = app
         .api_client
         .post(&format!("{}/connections", app.address))
         .json(&connection)
         .send()
         .await
-        .expect("Failed to execute request.");
+        .expect("Failed to execute create connection request.");
 
     assert_eq!(response.status().as_u16(), 200);
 
@@ -27,7 +27,7 @@ pub async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
         .get(&format!("{}/connections/{}", app.address, id))
         .send()
         .await
-        .expect("Failed to execute request.");
+        .expect("Failed to execute get connection request.");
 
     assert_eq!(response.status().as_u16(), 200);
 
@@ -37,6 +37,17 @@ pub async fn get_connection(app: &TestApp, id: &str) -> serde_json::Value {
         .expect("Failed to parse response.");
 
     connection
+}
+
+pub async fn delete_connection(app: &TestApp, name: &str) {
+    let response = app
+        .api_client
+        .delete(&format!("{}/connections/{}", app.address, name))
+        .send()
+        .await
+        .expect("Failed to execute delete connection request.");
+
+    assert_eq!(response.status().as_u16(), 200);
 }
 
 pub fn new_connection(name: &str) -> serde_json::Value {
@@ -187,7 +198,7 @@ async fn get_connection_returns_200_for_existing_connection() {
     let app = spawn_app().await;
 
     // Act
-    let connection = create_connection(&app, new_connection("test")).await;
+    let connection = create_connection(&app, &new_connection("test")).await;
     let existing_connection = get_connection(&app, "test").await;
 
     // Assert
@@ -215,7 +226,7 @@ async fn update_connection_changes_the_existing_connection() {
     let app = spawn_app().await;
 
     // Act
-    create_connection(&app, new_connection("test")).await;
+    create_connection(&app, &new_connection("test")).await;
 
     let response = app
         .api_client
@@ -250,17 +261,14 @@ async fn delete_connection_returns_404_for_missing_connection() {
 async fn delete_connection_returns_200_for_existing_connection() {
     // Arrange
     let app = spawn_app().await;
+    let connection = new_connection("test");
 
     // Act
-    create_connection(&app, new_connection("test")).await;
+    create_connection(&app, &connection).await;
 
-    let response = app
-        .api_client
-        .delete(&format!("{}/connections/test", app.address))
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let connection_name = connection["name"]
+        .as_str()
+        .expect("Connection name was not a string.");
 
-    // Assert
-    assert_eq!(response.status().as_u16(), 200);
+    delete_connection(&app, connection_name).await;
 }
