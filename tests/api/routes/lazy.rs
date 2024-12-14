@@ -4,11 +4,12 @@ use wiremock::{
 };
 
 use crate::{
+    email::{create_email_user, send_test_email},
     helpers::{spawn_app, wait_until_running},
     matchers::callback_type,
     routes::{
         connection::{create_connection, new_connection},
-        receive::{create_email_user, send_test_email, wait_until_callback_is_called},
+        receive::wait_until_callback_is_called,
     },
 };
 
@@ -16,6 +17,14 @@ use crate::{
 pub async fn lazy_session_should_not_start_when_connection_is_created() {
     // Arrange
     let app = spawn_app().await;
+
+    Mock::given(method("POST"))
+        .and(path("/callback"))
+        .and(callback_type("session_started"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&app.mock_server)
+        .await;
 
     // Act
     let response = app
@@ -25,14 +34,6 @@ pub async fn lazy_session_should_not_start_when_connection_is_created() {
         .send()
         .await
         .expect("Failed to execute request.");
-
-    Mock::given(method("POST"))
-        .and(path("/callback"))
-        .and(callback_type("session_started"))
-        .respond_with(wiremock::ResponseTemplate::new(200))
-        .expect(0)
-        .mount(&app.mock_server)
-        .await;
 
     // Assert
     assert_eq!(response.status().as_u16(), 200);
@@ -49,7 +50,6 @@ pub async fn lazy_session_should_start_when_message_is_received() {
     create_connection(&app, &connection).await;
     wait_until_running(&app, "test").await;
 
-    // Act
     Mock::given(method("POST"))
         .and(path("/callback"))
         .and(callback_type("session_started"))
@@ -58,6 +58,7 @@ pub async fn lazy_session_should_start_when_message_is_received() {
         .mount(&app.mock_server)
         .await;
 
+    // Act
     send_test_email(&email_user).await;
 
     // Assert
@@ -75,7 +76,6 @@ pub async fn lazy_session_should_close_after_connection_is_removed() {
     create_connection(&app, &connection).await;
     wait_until_running(&app, "test").await;
 
-    // Act
     Mock::given(method("POST"))
         .and(path("/callback"))
         .and(callback_type("session_closed"))
@@ -84,6 +84,7 @@ pub async fn lazy_session_should_close_after_connection_is_removed() {
         .mount(&app.mock_server)
         .await;
 
+    // Act
     send_test_email(&email_user).await;
     wait_until_callback_is_called(&app.mock_server, "session_started", 1).await;
 
