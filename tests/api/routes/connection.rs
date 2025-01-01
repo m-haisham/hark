@@ -1,6 +1,14 @@
 use itertools::Itertools;
+use wiremock::{
+    matchers::{method, path},
+    Mock,
+};
 
-use crate::helpers::{spawn_app, TestApp};
+use crate::{
+    helpers::{spawn_app, TestApp},
+    matchers::callback_type,
+    routes::receive::wait_until_callback_is_called,
+};
 
 pub async fn create_connection(app: &TestApp, connection: &serde_json::Value) -> serde_json::Value {
     let response = app
@@ -271,4 +279,31 @@ async fn delete_connection_returns_200_for_existing_connection() {
         .expect("Connection name was not a string.");
 
     delete_connection(&app, connection_name).await;
+}
+
+#[tokio::test]
+async fn delete_connection_should_send_connection_stopped_callback() {
+    // Arrange
+    let app = spawn_app().await;
+    let connection = new_connection("test");
+
+    Mock::given(method("POST"))
+        .and(path("/callback"))
+        .and(callback_type("connection_stopped"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.mock_server)
+        .await;
+
+    // Act
+    create_connection(&app, &connection).await;
+
+    let connection_name = connection["name"]
+        .as_str()
+        .expect("Connection name was not a string.");
+
+    delete_connection(&app, connection_name).await;
+
+    // Assert
+    wait_until_callback_is_called(&app.mock_server, "connection_stopped", 1).await;
 }

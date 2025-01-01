@@ -4,6 +4,7 @@ use crate::connection::types::{ConnectionEvent, ConnectionId};
 pub enum BackgroundCommand {
     ConnectionEvent(ConnectionEvent),
     SessionEvent(SessionEvent),
+    CloseSession(ConnectionId),
     RestartSession(ConnectionId),
     Stop,
 }

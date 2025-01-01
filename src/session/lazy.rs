@@ -190,7 +190,7 @@ impl ImapLazySession {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> eyre::Result<()> {
+    pub async fn stop(&self) -> eyre::Result<()> {
         if self.is_running().await? {
             // We can ignore the error here this means the worker has already exited
             let _ = self.command_sender.send(LazyCommand::Exit).await;

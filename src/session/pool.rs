@@ -72,6 +72,18 @@ impl SessionPool {
     }
 
     #[tracing::instrument(skip_all, fields(connection_id = %connection_id))]
+    pub async fn stop_if_running(&self, connection_id: ConnectionId) -> eyre::Result<()> {
+        let Some(session) = self.pool.get(&connection_id) else {
+            // If the session does not exist, we can consider it stopped
+            return Ok(());
+        };
+
+        session.stop().await.wrap_err("Failed to stop session")?;
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all, fields(connection_id = %connection_id))]
     pub async fn start_if_not_running(&self, connection_id: ConnectionId) -> eyre::Result<()> {
         let Some(session) = self.pool.get(&connection_id) else {
             tracing::error!("Tried to start non-existing session: {}", connection_id);

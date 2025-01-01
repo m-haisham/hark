@@ -32,6 +32,7 @@ impl BackgroundPool {
         let handle = tokio::spawn(background_worker(
             self.task_id,
             Arc::clone(state),
+            self.sender.clone(),
             self.receiver.clone(),
         ));
 

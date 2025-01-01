@@ -17,9 +17,10 @@ use super::command::BackgroundCommand;
 pub async fn background_worker(
     id: TaskId,
     state: ArcAppState,
+    sender: async_channel::Sender<BackgroundCommand>,
     receiver: async_channel::Receiver<BackgroundCommand>,
 ) {
-    let result = background_worker_inner(id, Arc::clone(&state), receiver).await;
+    let result = background_worker_inner(id, Arc::clone(&state), sender, receiver).await;
     if let Err(err) = result {
         tracing::error!("Background worker {} failed: {:?}", id, err);
     }
@@ -30,6 +31,7 @@ pub async fn background_worker(
 pub async fn background_worker_inner(
     task_id: TaskId,
     state: ArcAppState,
+    sender: async_channel::Sender<BackgroundCommand>,
     receiver: async_channel::Receiver<BackgroundCommand>,
 ) -> eyre::Result<()> {
     loop {
@@ -86,6 +88,10 @@ pub async fn background_worker_inner(
                         tracing::info!("Connection {} stopped", id);
                     }
 
+                    let _ = sender
+                        .send(BackgroundCommand::CloseSession(id.clone()))
+                        .await;
+
                     let _ = state
                         .anchor
                         .send(CallbackRequest::ConnectionStopped { connection_id: id })
@@ -103,6 +109,10 @@ pub async fn background_worker_inner(
 
                         connection.state = ConnectionState::Failed(error.clone());
                     }
+
+                    let _ = sender
+                        .send(BackgroundCommand::CloseSession(id.clone()))
+                        .await;
 
                     let _ = state
                         .anchor
@@ -176,8 +186,24 @@ pub async fn background_worker_inner(
                     if let Err(err) = result {
                         tracing::error!("{:?}", err);
                     }
+
+                    // TODO: Remove session from pool
                 }
             },
+            BackgroundCommand::CloseSession(connection_id) => {
+                tracing::warn!("Closing session for connection {}", connection_id);
+
+                let lock = state.session_pool.lock().await;
+
+                let result = lock
+                    .stop_if_running(connection_id.clone())
+                    .await
+                    .wrap_err("Failed to close session");
+
+                if let Err(err) = result {
+                    tracing::error!("{:?}", err);
+                }
+            }
             BackgroundCommand::RestartSession(connection_id) => {
                 tracing::debug!("Restarting session for connection {}", connection_id);
 

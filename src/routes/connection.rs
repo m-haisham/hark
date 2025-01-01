@@ -145,17 +145,20 @@ async fn delete_connection_inner(
 ) -> Result<ConnectionInfo, ResponseError> {
     let mut lock = state.connection_pool.lock().await;
 
-    let Some(connection) = lock.remove_connection(&id) else {
-        return Err(ResponseError::NotFound(
-            eyre!("Connection not found: {id}"),
-            "Connection not found".to_string(),
-        ));
+    let info_before_deletion = {
+        let Some(connection) = lock.get_connection(&id) else {
+            return Err(ResponseError::NotFound(
+                eyre!("Connection not found: {id}"),
+                "Connection not found".to_string(),
+            ));
+        };
+
+        connection.stop().await;
+        connection.info().await?
     };
 
     let join_handle = lock.remove_join(&id).await;
     drop(lock);
-
-    connection.stop().await;
 
     if let Some(handle) = join_handle {
         if !handle.is_finished() {
@@ -163,5 +166,20 @@ async fn delete_connection_inner(
         }
     }
 
-    Ok(connection.info().await?)
+    let mut lock = state.connection_pool.lock().await;
+
+    let info = if let Some(connection) = lock.remove_connection(&id) {
+        if let Ok(info) = connection.info().await {
+            info
+        } else {
+            tracing::warn!("Failed to get connection info after deletion");
+            info_before_deletion
+        }
+    } else {
+        return Err(ResponseError::ServerError(eyre!(
+            "Failed to delete connection"
+        )));
+    };
+
+    Ok(info)
 }

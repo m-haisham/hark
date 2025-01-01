@@ -348,7 +348,7 @@ async fn drop_interrupt_when_stopped(
             tracing::debug!("Connection is active, waiting for stop command");
         }
 
-        tokio::time::sleep(time::Duration::from_secs(10)).await;
+        tokio::time::sleep(time::Duration::from_secs(1)).await;
     }
 }
 
