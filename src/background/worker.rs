@@ -4,6 +4,7 @@ use eyre::{eyre, Context};
 
 use crate::{
     anchor::CallbackRequest,
+    background::command::SessionEvent,
     connection::types::{ConnectionEvent, ConnectionEventKind, ConnectionState},
     session::lazy::LazyCommand,
     state::ArcAppState,
@@ -148,18 +149,56 @@ pub async fn background_worker_inner(
                     }
                 }
             },
+            BackgroundCommand::SessionEvent(event) => match event {
+                SessionEvent::Started(connection_id) => {
+                    tracing::debug!(
+                        "Marking session for connection {} as started",
+                        connection_id
+                    );
+
+                    let result = state
+                        .anchor
+                        .send(CallbackRequest::SessionStarted { connection_id })
+                        .await;
+
+                    if let Err(err) = result {
+                        tracing::error!("{:?}", err);
+                    }
+                }
+                SessionEvent::Exited(connection_id) => {
+                    tracing::debug!("Marking session for connection {} as closed", connection_id);
+
+                    let result = state
+                        .anchor
+                        .send(CallbackRequest::SessionClosed { connection_id })
+                        .await;
+
+                    if let Err(err) = result {
+                        tracing::error!("{:?}", err);
+                    }
+                }
+            },
             BackgroundCommand::RestartSession(connection_id) => {
                 tracing::debug!("Restarting session for connection {}", connection_id);
 
                 let lock = state.session_pool.lock().await;
 
                 let result = lock
-                    .start_if_not_running(connection_id)
+                    .start_if_not_running(connection_id.clone())
                     .await
                     .wrap_err("Failed to restart session");
 
                 if let Err(err) = result {
                     tracing::error!("{:?}", err);
+
+                    let result = state
+                        .anchor
+                        .send(CallbackRequest::SessionClosed { connection_id })
+                        .await;
+
+                    if let Err(err) = result {
+                        tracing::error!("{:?}", err);
+                    }
                 }
             }
             BackgroundCommand::Stop => {

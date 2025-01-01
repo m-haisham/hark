@@ -62,10 +62,7 @@ pub async fn wait_until_callback_is_called(
         last_count = message_received_requests.len();
     }
 
-    panic!(
-        "Callback was called {} times, but expected {}.",
-        last_count, expected_requests
-    );
+    panic!("Callback '{kind}' was called {last_count} times, but expected {expected_requests}.");
 }
 
 #[tokio::test]

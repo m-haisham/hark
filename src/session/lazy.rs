@@ -22,7 +22,7 @@ use tokio::{sync::mpsc, task::JoinHandle, time::MissedTickBehavior};
 use tracing::{instrument, Span};
 
 use crate::{
-    background::command::BackgroundCommand,
+    background::command::{BackgroundCommand, SessionEvent},
     connection::{
         refresh::get_refreshed_connection_from_store,
         task::imap_connection_config,
@@ -134,13 +134,23 @@ impl ImapLazySession {
 
         let handle = tokio::spawn(lazy_worker(worker));
 
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|e| eyre!(e.to_string())) // FIXME: cant recover from this error
-            .wrap_err("Failed to acquire lock")?;
+        {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|e| eyre!(e.to_string())) // FIXME: cant recover from this error
+                .wrap_err("Failed to acquire lock")?;
 
-        state.worker = Some(handle);
+            state.worker = Some(handle);
+        }
+
+        self.background_sender
+            .send(BackgroundCommand::SessionEvent(SessionEvent::Started(
+                self.connection_id.clone(),
+            )))
+            .await
+            .map_err(|e| eyre!(e))
+            .wrap_err("Failed to send session started event")?;
 
         Ok(())
     }
@@ -230,7 +240,19 @@ async fn event_listener(
                     }
                 }
 
-                if !command_receiver.is_empty() {
+                if command_receiver.is_empty() {
+                    let result = background_sender
+                        .send(BackgroundCommand::SessionEvent(SessionEvent::Exited(
+                            connection_id.clone(),
+                        )))
+                        .await
+                        .map_err(|e| eyre!(e))
+                        .wrap_err("Failed to send session closed event");
+
+                    if let Err(e) = result {
+                        tracing::error!("{:?}", e);
+                    }
+                } else {
                     tracing::info!("More commands in queue, restarting session after exit");
 
                     let result = background_sender
@@ -248,6 +270,19 @@ async fn event_listener(
             }
             None => {
                 tracing::info!("Event channel closed, exiting lazy session");
+
+                let result = background_sender
+                    .send(BackgroundCommand::SessionEvent(SessionEvent::Exited(
+                        connection_id.clone(),
+                    )))
+                    .await
+                    .map_err(|e| eyre!(e))
+                    .wrap_err("Failed to send session closed event");
+
+                if let Err(e) = result {
+                    tracing::error!("{:?}", e);
+                }
+
                 break;
             }
         }

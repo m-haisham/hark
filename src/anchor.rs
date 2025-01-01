@@ -31,6 +31,12 @@ pub enum CallbackRequest {
         connection_id: ConnectionId,
         error: String,
     },
+    SessionStarted {
+        connection_id: ConnectionId,
+    },
+    SessionClosed {
+        connection_id: ConnectionId,
+    },
     Ping,
 }
 
@@ -58,6 +64,8 @@ impl Anchor {
             CallbackRequest::ConnectionRunning { connection_id } => Some(connection_id.clone()),
             CallbackRequest::ConnectionStopped { connection_id } => Some(connection_id.clone()),
             CallbackRequest::ConnectionFailed { connection_id, .. } => Some(connection_id.clone()),
+            CallbackRequest::SessionStarted { connection_id } => Some(connection_id.clone()),
+            CallbackRequest::SessionClosed { connection_id } => Some(connection_id.clone()),
             CallbackRequest::Ping => None,
         };
 
