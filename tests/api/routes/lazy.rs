@@ -13,6 +13,8 @@ use crate::{
     },
 };
 
+use super::connection::delete_connection;
+
 #[tokio::test]
 pub async fn lazy_session_should_not_start_when_connection_is_created() {
     // Arrange
@@ -87,6 +89,7 @@ pub async fn lazy_session_should_close_after_connection_is_removed() {
     // Act
     send_test_email(&email_user).await;
     wait_until_callback_is_called(&app.mock_server, "session_started", 1).await;
+    delete_connection(&app, "test").await;
 
     // Assert
     wait_until_callback_is_called(&app.mock_server, "session_closed", 1).await;
