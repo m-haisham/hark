@@ -13,8 +13,6 @@ use crate::{
     },
 };
 
-use super::connection::delete_connection;
-
 #[tokio::test]
 pub async fn lazy_session_should_not_start_when_connection_is_created() {
     // Arrange
