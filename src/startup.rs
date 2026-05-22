@@ -13,7 +13,7 @@ use crate::{
     tracing::RequestSpan,
 };
 
-pub type Server = axum::serve::Serve<axum::Router, axum::Router>;
+pub type Server = axum::serve::Serve<TcpListener, axum::Router, axum::Router>;
 
 pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, std::io::Error> {
     let host = state.settings.server.host.clone();
