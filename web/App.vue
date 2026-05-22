@@ -101,7 +101,7 @@ function closeModal() {
                 <span
                     class="text-[11px] tracking-wide"
                     style="color: var(--text-tertiary)"
-                    >imap inspector</span
+                    >imap to http proxy</span
                 >
             </div>
             <div class="flex items-center gap-3">
