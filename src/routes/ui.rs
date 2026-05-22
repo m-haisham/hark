@@ -7,7 +7,7 @@ use axum::{
 };
 use tokio_stream::StreamExt;
 
-use crate::{response::ResponseError, state::AppState, templates::Index};
+use crate::{frontend::FrontendEvent, response::ResponseError, state::AppState, templates::Index};
 
 pub fn routes() -> axum::Router<Arc<AppState>> {
     axum::Router::new()
@@ -20,6 +20,7 @@ pub async fn ui() -> Index {
     crate::templates::Index {}
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn sse(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let stream = state.frontend.subscribe().filter_map(|result| {
         let event = match result {
@@ -38,6 +39,19 @@ pub async fn sse(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             }
         }
     });
+
+    // Send the initial connection list to the frontend
+    {
+        let connection_pool = state.connection_pool.lock().await;
+        match connection_pool.list_connection_info().await {
+            Ok(connections) => {
+                state.frontend.send(FrontendEvent::Connections(connections));
+            }
+            Err(e) => {
+                tracing::error!("Failed to list connection info: {}", e);
+            }
+        }
+    }
 
     Sse::new(stream).keep_alive(
         axum::response::sse::KeepAlive::new()
