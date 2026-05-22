@@ -12,6 +12,6 @@ pub mod startup;
 pub mod state;
 pub mod task;
 pub mod telemetry;
-pub mod templates;
+
 pub mod tracing;
 pub mod window;

@@ -2,32 +2,20 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{
     extract::State,
-    http::HeaderName,
     response::{IntoResponse, Sse},
 };
 use tokio_stream::StreamExt;
+use tower_http::services::{ServeDir, ServeFile};
 
-use crate::{
-    frontend::FrontendEvent,
-    response::ResponseError,
-    state::AppState,
-    templates::{FrontendStyle, Index},
-};
+use crate::{frontend::FrontendEvent, state::AppState};
 
 pub fn routes() -> axum::Router<Arc<AppState>> {
+    let serve_dir =
+        ServeDir::new("dist/frontend").fallback(ServeFile::new("dist/frontend/index.html"));
+
     axum::Router::new()
-        .route("/", axum::routing::get(ui))
         .route("/sse", axum::routing::get(sse))
-        .route("/dist/output.css", axum::routing::get(main_css))
-}
-
-pub async fn ui() -> Index {
-    #[cfg(debug_assertions)]
-    let style = FrontendStyle::Filesystem("dist/output.css".to_string());
-    #[cfg(not(debug_assertions))]
-    let style = FrontendStyle::Embedded(include_str!("../../dist/output.css"));
-
-    crate::templates::Index { style }
+        .fallback_service(serve_dir)
 }
 
 #[tracing::instrument(skip_all)]
@@ -68,12 +56,4 @@ pub async fn sse(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             .interval(Duration::from_secs(1))
             .text("keep-alive-text"),
     )
-}
-
-#[axum::debug_handler]
-pub async fn main_css() -> Result<impl IntoResponse, ResponseError> {
-    let path = std::path::Path::new("dist/output.css");
-    let css =
-        std::fs::read_to_string(path).map_err(|e| ResponseError::ServerError(eyre::eyre!(e)))?;
-    Ok(([(HeaderName::from_static("content-type"), "text/css")], css))
 }

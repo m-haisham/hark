@@ -7,7 +7,7 @@ use hark::{
     background::BackgroundPool,
     connection::pool::ConnectionPool,
     data::Data,
-    frontend::{FrontendBroadcaster, FrontendEvent},
+    frontend::FrontendBroadcaster,
     session::pool::SessionPool,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
