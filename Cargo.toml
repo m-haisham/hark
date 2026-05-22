@@ -1,7 +1,6 @@
 [package]
 name = "hark"
 version = "0.1.0"
-edition = "2021"
 
 [dependencies]
 async-channel = "2.3.1"
@@ -44,9 +43,13 @@ default-features = false
 features = ["runtime-tokio"]
 
 [dev-dependencies]
-lettre = { version = "0.11.22",
-   default-features = false,
-   features = [
+rand = "0.10.1"
+wiremock = "0.6.2"
+
+[dev-dependencies.lettre]
+version = "0.11.22"
+default-features = false
+features = [
     "builder",
     "smtp-transport",
     "tokio1-rustls",
@@ -54,9 +57,7 @@ lettre = { version = "0.11.22",
     "aws-lc-rs",
     "tokio1",
     "serde",
-] }
-rand = "0.10.1"
-wiremock = "0.6.2"
+]
 
 [profile.release]
 strip = "debuginfo"
