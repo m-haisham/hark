@@ -145,6 +145,7 @@ where
         client
             .read_response()
             .await
+            .transpose()
             .ok_or_else(|| eyre!("Failed to read greeting response from gmail IMAP server"))?
             .map_err(|e| eyre!(e))
             .wrap_err("Failed to read response")?;

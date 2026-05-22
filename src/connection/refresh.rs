@@ -1,6 +1,6 @@
 use chrono::Utc;
 use eyre::{eyre, WrapErr};
-use oauth2::TokenResponse;
+use oauth2::{basic::BasicClient, TokenResponse};
 use std::time::Duration;
 
 use crate::data::Data;
@@ -85,19 +85,23 @@ pub async fn refresh_access_token(
 
     tracing::info!("Refreshing access token for connection");
 
-    let client: oauth2::basic::BasicClient = oauth2::Client::new(
-        config.client_id.clone(),
-        Some(config.client_secret.clone()),
-        config.auth_uri.clone(),
-        Some(config.token_uri.clone()),
-    );
+    let client = BasicClient::new(config.client_id.clone())
+        .set_client_secret(config.client_secret.clone())
+        .set_auth_uri(config.auth_uri.clone())
+        .set_token_uri(config.token_uri.clone());
 
     let request = client.exchange_refresh_token(&refresh_token);
 
     tracing::debug!("Requesting new access token");
 
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| eyre!(e))
+        .wrap_err("Failed to build HTTP client")?;
+
     let response = request
-        .request_async(oauth2::reqwest::async_http_client)
+        .request_async(&client)
         .await
         .map_err(|e| eyre!(e))
         .wrap_err("Failed to refresh access token")?;
