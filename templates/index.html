@@ -94,13 +94,16 @@
                         </p>
                     </template>
                     <template
-                        x-if="$store.app.activeConnectionId && $store.app.messages.length === 0"
+                        x-if="$store.app.activeConnectionId && $store.app.activeMessages.length === 0"
                     >
                         <p class="p-6 text-center text-xs text-faint">
                             No messages
                         </p>
                     </template>
-                    <template x-for="msg in $store.app.messages" :key="msg.id">
+                    <template
+                        x-for="msg in $store.app.activeMessages"
+                        :key="msg.id"
+                    >
                         <div
                             class="px-3 py-2.5 cursor-pointer border-b hover:bg-indigo-50 dark:hover:bg-gray-800"
                             :class="$store.app.activeMessage?.id === msg.id ? 'item-active' : ''"
@@ -108,7 +111,7 @@
                         >
                             <div
                                 class="font-semibold truncate"
-                                x-text="msg.from || '(no sender)'"
+                                x-text="$store.app.formatAddress(msg.envelope.from)"
                             ></div>
                             <div
                                 class="text-xs truncate mt-0.5"
@@ -116,7 +119,7 @@
                             ></div>
                             <div
                                 class="text-xs mt-0.5 opacity-50"
-                                x-text="msg.date || ''"
+                                x-text="msg.envelope.date || ''"
                             ></div>
                         </div>
                     </template>
@@ -148,39 +151,39 @@
                                 <dl class="text-xs text-faint space-y-0.5">
                                     <div class="flex gap-1">
                                         <dt
-                                            class="font-semibold text-dimmed w-10 shrink-0"
+                                            class="font-semibold text-muted w-10 shrink-0"
                                         >
                                             From
                                         </dt>
                                         <dd
-                                            x-text="$store.app.activeMessage.from || '—'"
+                                            x-text="$store.app.formatAddress($store.app.activeMessage.envelope.from)"
                                         ></dd>
                                     </div>
                                     <div class="flex gap-1">
                                         <dt
-                                            class="font-semibold text-dimmed w-10 shrink-0"
+                                            class="font-semibold text-muted w-10 shrink-0"
                                         >
                                             To
                                         </dt>
                                         <dd
-                                            x-text="$store.app.activeMessage.to || '—'"
+                                            x-text="$store.app.formatAddress($store.app.activeMessage.envelope.to)"
                                         ></dd>
                                     </div>
                                     <div class="flex gap-1">
                                         <dt
-                                            class="font-semibold text-dimmed w-10 shrink-0"
+                                            class="font-semibold text-muted w-10 shrink-0"
                                         >
                                             Date
                                         </dt>
                                         <dd
-                                            x-text="$store.app.activeMessage.date || '—'"
+                                            x-text="$store.app.activeMessage.envelope.date || '—'"
                                         ></dd>
                                     </div>
                                 </dl>
                             </div>
                             <p
                                 class="text-sm leading-relaxed whitespace-pre-wrap text-muted"
-                                x-text="$store.app.activeMessage.body || $store.app.activeMessage.text || '(empty)'"
+                                x-text="$store.app.activeMessage.body_text[0] || '(empty)'"
                             ></p>
                         </div>
                     </template>

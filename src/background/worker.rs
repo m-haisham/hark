@@ -6,6 +6,7 @@ use crate::{
     anchor::CallbackRequest,
     background::command::SessionEvent,
     connection::types::{ConnectionEvent, ConnectionEventKind, ConnectionState},
+    frontend::FrontendEvent,
     session::lazy::LazyCommand,
     state::ArcAppState,
     task::TaskId,
@@ -134,6 +135,11 @@ pub async fn background_worker_inner(
                     }
 
                     tracing::debug!("Sending message to callback URL for connection {}", id);
+
+                    state.frontend.send(FrontendEvent::Message {
+                        connection_id: id.clone(),
+                        message: message.clone(),
+                    });
 
                     let _ = state
                         .anchor

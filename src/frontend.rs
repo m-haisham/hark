@@ -3,22 +3,32 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::connection::types::ConnectionInfo;
+use crate::{
+    connection::types::{ConnectionId, ConnectionInfo},
+    imap::types::Message,
+};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum FrontendEvent {
     Connections(Vec<ConnectionInfo>),
+    Message {
+        connection_id: ConnectionId,
+        message: Message,
+    },
 }
 
 impl FrontendEvent {
     pub fn to_sse_event(&self) -> eyre::Result<Event> {
         let event = match self {
             FrontendEvent::Connections(_) => "connections",
+            FrontendEvent::Message { .. } => "message",
         };
 
         let data = serde_json::to_string(self)
             .map_err(|e| eyre::eyre!("Failed to serialize event data: {}", e))?;
+
+        tracing::info!("Sending event: {}, data: {}", event, data);
 
         Ok(Event::default().event(event).data(data))
     }
