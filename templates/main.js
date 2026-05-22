@@ -23,7 +23,12 @@ Alpine.store('app', {
         this.messages = { ...this.messages, [id]: [] }
       }
 
-      this.messages[id].push(payload.message)
+      const message = {
+        id: new Date().getTime(),
+        ...payload.message,
+      }
+
+      this.messages[id].push(message)
       this.messages = { ...this.messages }
     })
 
@@ -60,6 +65,32 @@ Alpine.store('app', {
         .map((a) => (a.name ? `${a.name} <${a.email}>` : a.email))
         .join(', ') || '—'
     )
+  },
+
+  formatDate(dateStr) {
+    if (!dateStr) return '—'
+    const d = new Date(dateStr)
+    if (isNaN(d)) return dateStr
+    const today = new Date()
+    const isToday =
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate()
+    if (isToday) {
+      return d.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    }
+    return d.toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+      year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
   },
 
   stateLabel(state) {
