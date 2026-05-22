@@ -62,10 +62,6 @@ async fn main() -> eyre::Result<()> {
 
     let frontend = FrontendBroadcaster::new();
 
-    // Send the initial connection list to the frontend
-    let connections = connection_pool.list_connection_info().await?;
-    frontend.send(FrontendEvent::Connections(connections));
-
     let addr = (settings.server.host.as_str(), settings.server.port);
     let listener = TcpListener::bind(addr)
         .await
