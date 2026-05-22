@@ -2,6 +2,7 @@ pub mod anchor;
 pub mod background;
 pub mod connection;
 pub mod data;
+pub mod frontend;
 pub mod imap;
 pub mod response;
 pub mod routes;

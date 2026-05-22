@@ -7,6 +7,7 @@ use hark::{
     background::BackgroundPool,
     connection::pool::ConnectionPool,
     data::Data,
+    frontend::{FrontendBroadcaster, FrontendEvent},
     session::pool::SessionPool,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
@@ -59,6 +60,12 @@ async fn main() -> eyre::Result<()> {
         settings.lazy.clone(),
     );
 
+    let frontend = FrontendBroadcaster::new();
+
+    // Send the initial connection list to the frontend
+    let connections = connection_pool.list_connection_info().await?;
+    frontend.send(FrontendEvent::Connections(connections));
+
     let addr = (settings.server.host.as_str(), settings.server.port);
     let listener = TcpListener::bind(addr)
         .await
@@ -71,6 +78,7 @@ async fn main() -> eyre::Result<()> {
         session_pool: Mutex::new(session_pool),
         anchor,
         settings,
+        frontend,
     });
 
     {
