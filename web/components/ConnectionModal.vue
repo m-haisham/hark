@@ -76,7 +76,7 @@ async function handleTest() {
     error.value = "";
     try {
         const p = buildPayload();
-        if (props.mode === "create") p.name = form.name;
+        p.name = form.name;
         await testConnection(p);
         testStatus.value = "ok";
     } catch (e) {
