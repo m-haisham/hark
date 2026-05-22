@@ -10,3 +10,6 @@ up:
 
 down:
     docker-compose down
+
+dev:
+    tailwindcss -i ./templates/**/*.{css,html,js} -o ./dist/output.css --watch

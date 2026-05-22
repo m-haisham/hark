@@ -1,3 +1,4 @@
 /target
+/dist
 *.test.toml
 config.toml
