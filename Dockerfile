@@ -6,9 +6,12 @@ RUN rustup target add x86_64-unknown-linux-gnu
 RUN cargo install cargo-chef
 
 # Download the standalone binary (ensure you pick the right version/arch)
-RUN curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-linux-x64 \
-    && chmod +x tailwindcss-linux-x64 \
-    && mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then BINARY="tailwindcss-linux-arm64"; \
+    else BINARY="tailwindcss-linux-x64"; fi && \
+    curl -sLO "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/${BINARY}" && \
+    chmod +x "${BINARY}" && \
+    mv "${BINARY}" /usr/local/bin/tailwindcss
 
 WORKDIR /app
 
@@ -32,6 +35,9 @@ RUN cargo chef cook --release --recipe-path recipe.json --target x86_64-unknown-
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY templates ./templates
+
+# Compile the css assets using the standalone tailwindcss binary
+RUN tailwindcss -i ./templates/style/main.css -o ./dist/output.css --minify
 
 ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
 ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc

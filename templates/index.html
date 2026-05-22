@@ -4,7 +4,12 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="stylesheet" href="/dist/output.css" />
-        <script src="//unpkg.com/alpinejs" defer></script>
+        
+        {% match style %}
+          {% when FrontendStyle::Filesystem(val) %} <script src="//unpkg.com/alpinejs" defer></script>
+          {% when FrontendStyle::Embedded(val) %} <style>{{ val }}</style>
+        {% endmatch %}
+        
         <script defer>
             window.addEventListener('alpine:init', () => {
               {% include "./main.js" %}

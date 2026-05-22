@@ -12,4 +12,4 @@ down:
     docker-compose down
 
 dev:
-    tailwindcss -i ./templates/**/*.{css,html,js} -o ./dist/output.css --watch
+    tailwindcss -i ./templates/style/main.css -o ./dist/output.css --watch

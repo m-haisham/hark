@@ -7,7 +7,12 @@ use axum::{
 };
 use tokio_stream::StreamExt;
 
-use crate::{frontend::FrontendEvent, response::ResponseError, state::AppState, templates::Index};
+use crate::{
+    frontend::FrontendEvent,
+    response::ResponseError,
+    state::AppState,
+    templates::{FrontendStyle, Index},
+};
 
 pub fn routes() -> axum::Router<Arc<AppState>> {
     axum::Router::new()
@@ -17,7 +22,12 @@ pub fn routes() -> axum::Router<Arc<AppState>> {
 }
 
 pub async fn ui() -> Index {
-    crate::templates::Index {}
+    #[cfg(debug_assertions)]
+    let style = FrontendStyle::Filesystem("dist/output.css".to_string());
+    #[cfg(not(debug_assertions))]
+    let style = FrontendStyle::Embedded(include_str!("../../dist/output.css"));
+
+    crate::templates::Index { style }
 }
 
 #[tracing::instrument(skip_all)]
