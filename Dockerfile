@@ -33,7 +33,6 @@ RUN cargo chef cook --release --recipe-path recipe.json --target x86_64-unknown-
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-# Bring in the built frontend so it can be embedded or served from dist/frontend
 COPY --from=frontend /app/dist ./dist
 
 ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc

@@ -10,8 +10,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::{frontend::FrontendEvent, state::AppState};
 
 pub fn routes() -> axum::Router<Arc<AppState>> {
-    let serve_dir =
-        ServeDir::new("dist/frontend").fallback(ServeFile::new("dist/frontend/index.html"));
+    let serve_dir = ServeDir::new("dist").fallback(ServeFile::new("dist/index.html"));
 
     axum::Router::new()
         .route("/sse", axum::routing::get(sse))
