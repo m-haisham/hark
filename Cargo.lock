@@ -944,6 +944,7 @@ dependencies = [
  "once_cell",
  "rand 0.10.1",
  "reqwest",
+ "rustls",
  "rustls-native-certs",
  "secrecy",
  "serde",

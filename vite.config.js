@@ -11,7 +11,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/sse': 'http://localhost:3000',
-      '/api': 'http://localhost:3000',
+      '/connections': 'http://localhost:3000',
+      '/test-connection': 'http://localhost:3000',
+      '/health-check': 'http://localhost:3000',
     },
   },
 })
