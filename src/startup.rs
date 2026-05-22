@@ -8,7 +8,7 @@ use tokio::{net::TcpListener, signal};
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    routes::{connection, health_check, ui},
+    routes::{self, connection, health_check},
     state::AppState,
     tracing::RequestSpan,
 };
@@ -27,7 +27,7 @@ pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, 
         .route("/connections/{id}", get(connection::get_connection))
         .route("/connections/{id}", put(connection::update_connection))
         .route("/connections/{id}", delete(connection::delete_connection))
-        .route("/ui", get(ui::ui))
+        .merge(routes::ui::routes())
         .layer(TraceLayer::new_for_http().make_span_with(RequestSpan))
         .with_state(state);
 
