@@ -1,11 +1,56 @@
 @import "tailwindcss";
 
+@theme {
+    --font-mono:
+        "Berkeley Mono", "TX-02", "Geist Mono", "IBM Plex Mono", ui-monospace,
+        monospace;
+    --color-surface: #0e0e10;
+    --color-surface-1: #141416;
+    --color-surface-2: #1c1c1f;
+    --color-surface-3: #242428;
+    --color-border: #2a2a2f;
+    --color-border-bright: #3a3a42;
+    --color-text: #e8e8ec;
+    --color-text-muted: #9494a0;
+    --color-text-faint: #55555f;
+    --color-accent: #7c6af7;
+    --color-accent-dim: #2d2845;
+    --color-accent-glow: rgba(124, 106, 247, 0.15);
+    --color-green: #34d399;
+    --color-amber: #fbbf24;
+    --color-red: #f87171;
+}
+
 @layer base {
-    body { @apply text-gray-950 dark:text-gray-50; }
-    .bg-default { @apply bg-gray-100 dark:bg-gray-900; }
-    .text-muted { @apply text-gray-800 dark:text-gray-200; }
-    .text-dimmed { @apply text-gray-700 dark:text-gray-300; }
-    .text-faint { @apply text-gray-500 dark:text-gray-500; }
-    .border-subtle { @apply border-gray-300 dark:border-gray-700; }
-    .item-active { @apply bg-indigo-600 text-white; }
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        height: 100%;
+        margin: 0;
+        background: var(--color-surface);
+        color: var(--color-text);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: var(--color-border-bright);
+        border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-text-faint);
+    }
 }
