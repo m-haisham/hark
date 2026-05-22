@@ -33,12 +33,13 @@ function initSSE() {
 }
 
 // Computed helpers (module-level, reused across all useAppStore() calls)
-const activeConnection = computed(() =>
-  connections.value.find(c => c.id === activeConnectionId.value) || null
+const activeConnection = computed(
+  () =>
+    connections.value.find((c) => c.id === activeConnectionId.value) || null,
 )
 
-const activeMessages = computed(() =>
-  messages.value[activeConnectionId.value] || []
+const activeMessages = computed(
+  () => messages.value[activeConnectionId.value] || [],
 )
 
 function selectConnection(id) {
@@ -52,8 +53,13 @@ function selectMessage(msg) {
 
 function formatAddress(addr) {
   if (!addr) return '—'
-  const addrs = addr.List || (addr.Group ? addr.Group.flatMap(g => g.addresses) : [])
-  return addrs.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ') || '—'
+  const addrs =
+    addr.List || (addr.Group ? addr.Group.flatMap((g) => g.addresses) : [])
+  return (
+    addrs
+      .map((a) => (a.name ? `${a.name} <${a.email}>` : a.email))
+      .join(', ') || '—'
+  )
 }
 
 function formatDate(dateStr) {
@@ -66,7 +72,11 @@ function formatDate(dateStr) {
     d.getMonth() === today.getMonth() &&
     d.getDate() === today.getDate()
   if (isToday) {
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return d.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
   }
   return d.toLocaleDateString([], {
     month: 'short',
@@ -81,6 +91,41 @@ function formatDate(dateStr) {
 function stateLabel(state) {
   if (!state) return 'unknown'
   return state.type || 'unknown'
+}
+
+async function createConnection(data) {
+  const res = await fetch('/connections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+async function updateConnection(id, data) {
+  const res = await fetch(`/connections/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+async function deleteConnection(id) {
+  const res = await fetch(`/connections/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+async function testConnection(data) {
+  const res = await fetch('/test-connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await res.text())
 }
 
 export function useAppStore() {
@@ -100,5 +145,9 @@ export function useAppStore() {
     formatAddress,
     formatDate,
     stateLabel,
+    createConnection,
+    updateConnection,
+    deleteConnection,
+    testConnection,
   }
 }

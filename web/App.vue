@@ -2,6 +2,8 @@
 import { ref, computed } from "vue";
 import { useDark, useToggle } from "@vueuse/core";
 import { useAppStore } from "./store/app.js";
+import AppButton from "./components/AppButton.vue";
+import ConnectionModal from "./components/ConnectionModal.vue";
 
 const {
     connections,
@@ -51,25 +53,68 @@ const highlightedJson = computed(() =>
 );
 
 const messageCount = computed(() => activeMessages.value.length);
+
+// Modal
+const modalOpen = ref(false);
+const modalMode = ref("create");
+const modalConnection = ref(null);
+
+function openCreateModal() {
+    modalMode.value = "create";
+    modalConnection.value = null;
+    modalOpen.value = true;
+}
+function openEditModal(conn) {
+    modalMode.value = "edit";
+    modalConnection.value = conn;
+    modalOpen.value = true;
+}
+function closeModal() {
+    modalOpen.value = false;
+    modalConnection.value = null;
+}
 </script>
 
 <template>
-    <div class="app-shell">
+    <div
+        class="flex flex-col h-screen overflow-hidden"
+        style="
+            background: var(--surface-base);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 12px;
+        "
+    >
         <!-- Titlebar -->
-        <header class="titlebar">
+        <header
+            class="flex items-center justify-between px-4 h-10 shrink-0"
+            style="
+                background: var(--surface-raised);
+                border-bottom: 1px solid var(--border-subtle);
+            "
+        >
             <div class="flex items-center gap-2">
-                <span class="titlebar-logo">◈</span>
-                <span class="titlebar-name">hark</span>
-                <span class="titlebar-sub">imap inspector</span>
+                <span class="text-sm leading-none" style="color: var(--accent)"
+                    >◈</span
+                >
+                <span class="text-[13px] font-bold tracking-wide">hark</span>
+                <span
+                    class="text-[11px] tracking-wide"
+                    style="color: var(--text-tertiary)"
+                    >imap inspector</span
+                >
             </div>
             <div class="flex items-center gap-3">
-                <span class="stat-pill">
+                <span
+                    class="flex items-center gap-1.5 text-[11px]"
+                    style="color: var(--text-secondary)"
+                >
                     <span
-                        class="stat-dot"
-                        :class="
+                        class="w-1.5 h-1.5 rounded-full shrink-0 transition-all"
+                        :style="
                             connections.length > 0
-                                ? 'stat-dot--ok'
-                                : 'stat-dot--off'
+                                ? 'background: var(--status-ok); box-shadow: 0 0 5px var(--status-ok-glow)'
+                                : 'background: var(--text-tertiary)'
                         "
                     ></span>
                     {{ connections.length }}
@@ -77,47 +122,113 @@ const messageCount = computed(() => activeMessages.value.length);
                         connections.length === 1 ? "connection" : "connections"
                     }}
                 </span>
-                <button
-                    class="theme-btn"
-                    @click="toggleDark()"
+                <AppButton
+                    variant="ghost"
+                    class="!h-6 !w-6 !p-0 text-[13px]"
                     :title="isDark ? 'Switch to light' : 'Switch to dark'"
+                    @click="toggleDark()"
                 >
                     {{ isDark ? "○" : "●" }}
-                </button>
+                </AppButton>
             </div>
         </header>
 
         <!-- 3-pane body -->
-        <div class="body-grid">
+        <div class="flex flex-1 overflow-hidden">
             <!-- Pane 1 · Connections -->
-            <aside class="pane pane--border">
-                <div class="pane-header">
+            <aside
+                class="flex flex-col shrink-0 overflow-hidden"
+                style="
+                    width: 260px;
+                    border-right: 1px solid var(--border-subtle);
+                "
+            >
+                <div
+                    class="flex items-center gap-2 px-3 h-8 shrink-0 text-[10px] font-semibold uppercase tracking-widest"
+                    style="
+                        background: var(--surface-raised);
+                        border-bottom: 1px solid var(--border-subtle);
+                        color: var(--text-tertiary);
+                    "
+                >
                     <span>Connections</span>
-                    <span class="count-badge">{{ connections.length }}</span>
+                    <span
+                        class="ml-auto inline-flex items-center h-4 px-1.5 rounded-full text-[10px] border"
+                        style="
+                            background: var(--surface-sunken);
+                            border-color: var(--border-subtle);
+                            color: var(--text-tertiary);
+                        "
+                        >{{ connections.length }}</span
+                    >
+                    <AppButton
+                        variant="ghost"
+                        class="!h-5 !w-5 !p-0 !text-base !leading-none shrink-0"
+                        title="New connection"
+                        @click="openCreateModal"
+                        >+</AppButton
+                    >
                 </div>
-                <div class="pane-scroll">
-                    <div v-if="connections.length === 0" class="empty-state">
-                        <span class="empty-icon">⌀</span>
+                <div
+                    class="flex-1 overflow-y-auto"
+                    style="background: var(--surface-base)"
+                >
+                    <div
+                        v-if="connections.length === 0"
+                        class="flex flex-col items-center justify-center gap-1.5 h-full text-[11px] tracking-wide"
+                        style="color: var(--text-tertiary)"
+                    >
+                        <span class="text-xl opacity-20">⌀</span>
                         <span>no connections</span>
                     </div>
                     <div
                         v-for="conn in connections"
                         :key="conn.id"
-                        class="list-row"
-                        :class="{
-                            'list-row--active': activeConnectionId === conn.id,
-                        }"
+                        class="group relative px-3 py-2 cursor-pointer"
+                        :style="
+                            activeConnectionId === conn.id
+                                ? 'border-left: 2px solid var(--accent); padding-left: 10px; background: var(--surface-overlay); border-bottom: 1px solid var(--border-subtle)'
+                                : 'border-left: 2px solid transparent; border-bottom: 1px solid var(--border-subtle)'
+                        "
+                        @mouseenter="
+                            $event.currentTarget.style.background =
+                                activeConnectionId === conn.id
+                                    ? 'var(--surface-overlay)'
+                                    : 'var(--surface-overlay)'
+                        "
+                        @mouseleave="
+                            $event.currentTarget.style.background =
+                                activeConnectionId === conn.id
+                                    ? 'var(--surface-overlay)'
+                                    : 'var(--surface-base)'
+                        "
                         @click="selectConnection(conn.id)"
                     >
-                        <div
-                            class="flex items-center justify-between gap-2 mb-1 min-w-0"
-                        >
-                            <span class="row-title">{{ conn.id }}</span>
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <span
+                                class="text-[12px] font-semibold truncate flex-1"
+                                :style="
+                                    activeConnectionId === conn.id
+                                        ? 'color: var(--accent)'
+                                        : 'color: var(--text-primary)'
+                                "
+                                >{{ conn.id }}</span
+                            >
+                            <AppButton
+                                variant="ghost"
+                                class="!h-5 !w-5 !p-0 text-[11px] opacity-0 group-hover:opacity-100 shrink-0"
+                                title="Edit"
+                                @click.stop="openEditModal(conn)"
+                                >✎</AppButton
+                            >
                             <span :class="stateTagClass(conn.state)">{{
                                 stateLabel(conn.state)
                             }}</span>
                         </div>
-                        <div class="row-sub">
+                        <div
+                            class="text-[11px] mt-0.5 truncate"
+                            style="color: var(--text-secondary)"
+                        >
                             {{ conn.connection?.host ?? "—" }}
                         </div>
                     </div>
@@ -125,38 +236,95 @@ const messageCount = computed(() => activeMessages.value.length);
             </aside>
 
             <!-- Pane 2 · Message list -->
-            <section class="pane pane--border">
-                <div class="pane-header">
+            <section
+                class="flex flex-col shrink-0 overflow-hidden"
+                style="
+                    width: 260px;
+                    border-right: 1px solid var(--border-subtle);
+                "
+            >
+                <div
+                    class="flex items-center gap-2 px-3 h-8 shrink-0 text-[10px] font-semibold uppercase tracking-widest"
+                    style="
+                        background: var(--surface-raised);
+                        border-bottom: 1px solid var(--border-subtle);
+                        color: var(--text-tertiary);
+                    "
+                >
                     <span class="truncate">{{
                         activeConnectionId ?? "Messages"
                     }}</span>
-                    <span class="count-badge">{{ messageCount }}</span>
+                    <span
+                        class="ml-auto inline-flex items-center h-4 px-1.5 rounded-full text-[10px] border shrink-0"
+                        style="
+                            background: var(--surface-sunken);
+                            border-color: var(--border-subtle);
+                            color: var(--text-tertiary);
+                        "
+                        >{{ messageCount }}</span
+                    >
                 </div>
-                <div class="pane-scroll">
-                    <div v-if="!activeConnectionId" class="empty-state">
-                        <span class="empty-icon">←</span>
+                <div
+                    class="flex-1 overflow-y-auto"
+                    style="background: var(--surface-base)"
+                >
+                    <div
+                        v-if="!activeConnectionId"
+                        class="flex flex-col items-center justify-center gap-1.5 h-full text-[11px] tracking-wide"
+                        style="color: var(--text-tertiary)"
+                    >
+                        <span class="text-xl opacity-20">←</span>
                         <span>select a connection</span>
                     </div>
-                    <div v-else-if="messageCount === 0" class="empty-state">
-                        <span class="empty-icon">⌀</span>
+                    <div
+                        v-else-if="messageCount === 0"
+                        class="flex flex-col items-center justify-center gap-1.5 h-full text-[11px] tracking-wide"
+                        style="color: var(--text-tertiary)"
+                    >
+                        <span class="text-xl opacity-20">⌀</span>
                         <span>no messages</span>
                     </div>
                     <div
                         v-for="msg in activeMessages"
                         :key="msg.id"
-                        class="list-row"
-                        :class="{
-                            'list-row--active': activeMessage?.id === msg.id,
-                        }"
+                        class="px-3 py-2 cursor-pointer"
+                        :style="
+                            activeMessage?.id === msg.id
+                                ? 'border-left: 2px solid var(--accent); padding-left: 10px; background: var(--surface-overlay); border-bottom: 1px solid var(--border-subtle)'
+                                : 'border-left: 2px solid transparent; border-bottom: 1px solid var(--border-subtle)'
+                        "
+                        @mouseenter="
+                            $event.currentTarget.style.background =
+                                'var(--surface-overlay)'
+                        "
+                        @mouseleave="
+                            $event.currentTarget.style.background =
+                                activeMessage?.id === msg.id
+                                    ? 'var(--surface-overlay)'
+                                    : 'var(--surface-base)'
+                        "
                         @click="selectMessage(msg)"
                     >
-                        <div class="row-title">
+                        <div
+                            class="text-[12px] font-semibold truncate"
+                            :style="
+                                activeMessage?.id === msg.id
+                                    ? 'color: var(--accent)'
+                                    : 'color: var(--text-primary)'
+                            "
+                        >
                             {{ formatAddress(msg.envelope?.from) }}
                         </div>
-                        <div class="row-sub" style="margin-top: 2px">
+                        <div
+                            class="text-[11px] truncate mt-0.5"
+                            style="color: var(--text-secondary)"
+                        >
                             {{ msg.subject || "(no subject)" }}
                         </div>
-                        <div class="row-date">
+                        <div
+                            class="text-[10px] mt-1"
+                            style="color: var(--text-tertiary)"
+                        >
                             {{ formatDate(msg.envelope?.date) }}
                         </div>
                     </div>
@@ -164,287 +332,148 @@ const messageCount = computed(() => activeMessages.value.length);
             </section>
 
             <!-- Pane 3 · Viewer -->
-            <main class="pane viewer-pane">
-                <div class="pane-header">
+            <main class="flex flex-col flex-1 overflow-hidden">
+                <div
+                    class="flex items-center gap-2 px-3 h-8 shrink-0 text-[10px] font-semibold uppercase tracking-widest"
+                    style="
+                        background: var(--surface-raised);
+                        border-bottom: 1px solid var(--border-subtle);
+                        color: var(--text-tertiary);
+                    "
+                >
                     <span>Message</span>
                     <div
                         v-if="activeMessage"
                         class="ml-auto flex items-center gap-1"
                     >
                         <button
-                            class="view-btn"
-                            :class="{ 'view-btn--active': viewMode === 'text' }"
+                            class="btn btn-ghost !h-6 !text-[10px] font-semibold uppercase tracking-wider border"
+                            :style="
+                                viewMode === 'text'
+                                    ? 'color: var(--accent); border-color: var(--accent-border); background: var(--accent-subtle)'
+                                    : 'border-color: var(--border-subtle); color: var(--text-tertiary)'
+                            "
                             @click="viewMode = 'text'"
                         >
                             Text
                         </button>
                         <button
-                            class="view-btn"
-                            :class="{ 'view-btn--active': viewMode === 'json' }"
+                            class="btn btn-ghost !h-6 !text-[10px] font-semibold uppercase tracking-wider border"
+                            :style="
+                                viewMode === 'json'
+                                    ? 'color: var(--accent); border-color: var(--accent-border); background: var(--accent-subtle)'
+                                    : 'border-color: var(--border-subtle); color: var(--text-tertiary)'
+                            "
                             @click="viewMode = 'json'"
                         >
                             JSON
                         </button>
                     </div>
                 </div>
-                <div class="pane-scroll">
-                    <div v-if="!activeMessage" class="empty-state">
-                        <span class="empty-icon">✉</span>
+                <div
+                    class="flex-1 overflow-y-auto"
+                    style="background: var(--surface-base)"
+                >
+                    <div
+                        v-if="!activeMessage"
+                        class="flex flex-col items-center justify-center gap-1.5 h-full text-[11px] tracking-wide"
+                        style="color: var(--text-tertiary)"
+                    >
+                        <span class="text-xl opacity-20">✉</span>
                         <span>select a message</span>
                     </div>
-                    <div v-else-if="viewMode === 'text'" class="viewer-content">
-                        <h2 class="viewer-subject">
+                    <div v-else-if="viewMode === 'text'" class="p-6">
+                        <h2
+                            class="text-[14px] font-bold leading-snug mb-3"
+                            style="
+                                color: var(--text-primary);
+                                letter-spacing: -0.01em;
+                            "
+                        >
                             {{ activeMessage.subject || "(no subject)" }}
                         </h2>
-                        <dl class="meta-grid">
-                            <div class="meta-row">
-                                <dt class="meta-label">From</dt>
-                                <dd class="meta-value">
-                                    {{
+                        <dl class="flex flex-col gap-1.5">
+                            <div
+                                v-for="[label, val] in [
+                                    [
+                                        'From',
                                         formatAddress(
                                             activeMessage.envelope?.from,
-                                        )
-                                    }}
-                                </dd>
-                            </div>
-                            <div class="meta-row">
-                                <dt class="meta-label">To</dt>
-                                <dd class="meta-value">
-                                    {{
+                                        ),
+                                    ],
+                                    [
+                                        'To',
                                         formatAddress(
                                             activeMessage.envelope?.to,
-                                        )
-                                    }}
-                                </dd>
-                            </div>
-                            <div class="meta-row">
-                                <dt class="meta-label">Date</dt>
-                                <dd class="meta-value">
-                                    {{
-                                        formatDate(activeMessage.envelope?.date)
-                                    }}
+                                        ),
+                                    ],
+                                    [
+                                        'Date',
+                                        formatDate(
+                                            activeMessage.envelope?.date,
+                                        ),
+                                    ],
+                                ]"
+                                :key="label"
+                                class="flex gap-3 items-baseline"
+                            >
+                                <dt
+                                    class="text-[10px] font-semibold uppercase tracking-widest w-8 shrink-0"
+                                    style="color: var(--text-tertiary)"
+                                >
+                                    {{ label }}
+                                </dt>
+                                <dd
+                                    class="text-[12px]"
+                                    style="color: var(--text-secondary)"
+                                >
+                                    {{ val }}
                                 </dd>
                             </div>
                         </dl>
-                        <div class="viewer-divider"></div>
-                        <pre class="viewer-body">{{
-                            activeMessage.body_text?.[0] || "(empty)"
-                        }}</pre>
+                        <div
+                            class="my-4"
+                            style="
+                                height: 1px;
+                                background: var(--border-subtle);
+                            "
+                        ></div>
+                        <pre
+                            class="text-[12px] leading-relaxed whitespace-pre-wrap break-words"
+                            style="
+                                font-family: var(--font-mono);
+                                color: var(--text-secondary);
+                            "
+                            >{{
+                                activeMessage.body_text?.[0] || "(empty)"
+                            }}</pre
+                        >
                     </div>
-                    <div v-else class="viewer-content">
-                        <pre class="json-view" v-html="highlightedJson"></pre>
+                    <div v-else class="p-6">
+                        <pre
+                            class="text-[12px] leading-relaxed whitespace-pre overflow-x-auto"
+                            style="
+                                font-family: var(--font-mono);
+                                color: var(--text-secondary);
+                            "
+                            v-html="highlightedJson"
+                        ></pre>
                     </div>
                 </div>
             </main>
         </div>
     </div>
+
+    <!-- Connection modal -->
+    <ConnectionModal
+        v-if="modalOpen"
+        :mode="modalMode"
+        :connection="modalConnection"
+        @close="closeModal"
+    />
 </template>
 
 <style scoped>
-/* ── Shell ── */
-.app-shell {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-    background: var(--surface-base);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 12px;
-}
-
-/* ── Titlebar ── */
-.titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
-    height: 40px;
-    flex-shrink: 0;
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border-subtle);
-}
-.titlebar-logo {
-    color: var(--accent);
-    font-size: 14px;
-    line-height: 1;
-}
-.titlebar-name {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-}
-.titlebar-sub {
-    font-size: 11px;
-    color: var(--text-tertiary);
-    letter-spacing: 0.04em;
-}
-.stat-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: var(--text-secondary);
-}
-.stat-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.stat-dot--ok {
-    background: var(--status-ok);
-    box-shadow: 0 0 5px var(--status-ok-glow);
-}
-.stat-dot--off {
-    background: var(--text-tertiary);
-}
-
-.theme-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 22px;
-    border-radius: 4px;
-    border: 1px solid var(--border-subtle);
-    background: transparent;
-    color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    cursor: pointer;
-    transition:
-        color 100ms,
-        border-color 100ms;
-}
-.theme-btn:hover {
-    color: var(--text-secondary);
-    border-color: var(--border-default);
-}
-
-/* ── Layout ── */
-.body-grid {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-.pane {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-.pane--border {
-    border-right: 1px solid var(--border-subtle);
-}
-aside.pane {
-    width: 220px;
-    flex-shrink: 0;
-}
-section.pane {
-    width: 260px;
-    flex-shrink: 0;
-}
-.viewer-pane {
-    flex: 1;
-}
-
-/* ── Pane header ── */
-.pane-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    height: 32px;
-    flex-shrink: 0;
-    background: var(--surface-raised);
-    border-bottom: 1px solid var(--border-subtle);
-    color: var(--text-tertiary);
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-.count-badge {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    height: 16px;
-    padding: 0 6px;
-    border-radius: 10px;
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-sunken);
-    color: var(--text-tertiary);
-    font-size: 10px;
-    letter-spacing: 0;
-}
-
-/* ── Pane scroll ── */
-.pane-scroll {
-    flex: 1;
-    overflow-y: auto;
-    background: var(--surface-base);
-}
-
-/* ── Empty state ── */
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    height: 100%;
-    color: var(--text-tertiary);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-}
-.empty-icon {
-    font-size: 20px;
-    opacity: 0.25;
-}
-
-/* ── List rows ── */
-.list-row {
-    padding: 9px 12px 9px 10px;
-    border-bottom: 1px solid var(--border-subtle);
-    border-left: 2px solid transparent;
-    cursor: pointer;
-    transition: background 80ms ease;
-}
-.list-row:hover {
-    background: var(--surface-overlay);
-}
-.list-row--active {
-    border-left-color: var(--accent);
-    background: var(--surface-overlay);
-}
-.list-row--active .row-title {
-    color: var(--accent);
-}
-
-.row-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: color 80ms;
-}
-.row-sub {
-    font-size: 11px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.row-date {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    margin-top: 3px;
-}
-
-/* ── Tags ── */
 .tag {
     display: inline-flex;
     align-items: center;
@@ -471,92 +500,6 @@ section.pane {
 .tag-muted {
     background: var(--surface-sunken);
     color: var(--text-tertiary);
-}
-
-/* ── View toggle ── */
-.view-btn {
-    padding: 2px 7px;
-    border-radius: 3px;
-    border: 1px solid var(--border-subtle);
-    background: transparent;
-    color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 80ms ease;
-}
-.view-btn:hover {
-    color: var(--text-secondary);
-    border-color: var(--border-default);
-}
-.view-btn--active {
-    color: var(--accent);
-    border-color: var(--accent-border);
-    background: var(--accent-subtle);
-}
-
-/* ── Viewer ── */
-.viewer-content {
-    padding: 22px 26px;
-}
-.viewer-subject {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0 0 14px;
-    line-height: 1.3;
-    letter-spacing: -0.01em;
-}
-.meta-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-.meta-row {
-    display: flex;
-    gap: 14px;
-    align-items: baseline;
-}
-.meta-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-tertiary);
-    width: 32px;
-    flex-shrink: 0;
-}
-.meta-value {
-    font-size: 12px;
-    color: var(--text-secondary);
-}
-.viewer-divider {
-    height: 1px;
-    background: var(--border-subtle);
-    margin: 18px 0;
-}
-.viewer-body {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin: 0;
-}
-
-/* ── JSON view ── */
-.json-view {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    line-height: 1.65;
-    color: var(--text-secondary);
-    white-space: pre;
-    overflow-x: auto;
 }
 :deep(.json-key) {
     color: #a78bfa;

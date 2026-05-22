@@ -28,8 +28,6 @@ impl FrontendEvent {
         let data = serde_json::to_string(self)
             .map_err(|e| eyre::eyre!("Failed to serialize event data: {}", e))?;
 
-        tracing::info!("Sending event: {}, data: {}", event, data);
-
         Ok(Event::default().event(event).data(data))
     }
 }
