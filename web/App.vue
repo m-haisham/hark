@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from "vue";
+import { useDark, useToggle } from "@vueuse/core";
 import { useAppStore } from "./store/app.js";
 
 const {
@@ -14,29 +15,28 @@ const {
     stateLabel,
 } = useAppStore();
 
-// Message view mode: 'text' | 'json'
+const isDark = useDark();
+const toggleDark = useToggle(isDark);
+
 const viewMode = ref("text");
 
 function stateTagClass(state) {
     const s = stateLabel(state);
-    if (s === "running") return "tag tag-green";
-    if (s === "starting" || s === "stopping") return "tag tag-amber";
-    if (s === "failed") return "tag tag-red";
-    return "tag tag-gray";
+    if (s === "running") return "tag tag-ok";
+    if (s === "starting" || s === "stopping") return "tag tag-warn";
+    if (s === "failed") return "tag tag-error";
+    return "tag tag-muted";
 }
 
-// Syntax-highlighted JSON renderer
 function highlight(json) {
     const str = JSON.stringify(json, null, 2);
     return str.replace(
         /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
         (match) => {
-            if (/^"/.test(match)) {
-                if (/:$/.test(match)) {
-                    return `<span class="json-key">${match}</span>`;
-                }
-                return `<span class="json-string">${match}</span>`;
-            }
+            if (/^"/.test(match))
+                return /:$/.test(match)
+                    ? `<span class="json-key">${match}</span>`
+                    : `<span class="json-string">${match}</span>`;
             if (/true|false/.test(match))
                 return `<span class="json-bool">${match}</span>`;
             if (/null/.test(match))
@@ -55,7 +55,7 @@ const messageCount = computed(() => activeMessages.value.length);
 
 <template>
     <div class="app-shell">
-        <!-- ── Titlebar ─────────────────────────────────────────────── -->
+        <!-- Titlebar -->
         <header class="titlebar">
             <div class="flex items-center gap-2">
                 <span class="titlebar-logo">◈</span>
@@ -63,66 +63,75 @@ const messageCount = computed(() => activeMessages.value.length);
                 <span class="titlebar-sub">imap inspector</span>
             </div>
             <div class="flex items-center gap-3">
-                <span v-if="connections.length > 0" class="stat-pill">
-                    <span class="stat-dot running"></span>
+                <span class="stat-pill">
+                    <span
+                        class="stat-dot"
+                        :class="
+                            connections.length > 0
+                                ? 'stat-dot--ok'
+                                : 'stat-dot--off'
+                        "
+                    ></span>
                     {{ connections.length }}
                     {{
                         connections.length === 1 ? "connection" : "connections"
                     }}
                 </span>
-                <span v-else class="stat-pill">
-                    <span class="stat-dot stopped"></span>
-                    no connections
-                </span>
+                <button
+                    class="theme-btn"
+                    @click="toggleDark()"
+                    :title="isDark ? 'Switch to light' : 'Switch to dark'"
+                >
+                    {{ isDark ? "○" : "●" }}
+                </button>
             </div>
         </header>
 
-        <!-- ── 3-pane body ───────────────────────────────────────────── -->
+        <!-- 3-pane body -->
         <div class="body-grid">
-            <!-- Pane 1 · Connections ────────────────────────────────── -->
-            <aside class="pane pane-divider">
+            <!-- Pane 1 · Connections -->
+            <aside class="pane pane--border">
                 <div class="pane-header">
                     <span>Connections</span>
-                    <span class="ml-auto count-badge">{{
-                        connections.length
-                    }}</span>
+                    <span class="count-badge">{{ connections.length }}</span>
                 </div>
-
                 <div class="pane-scroll">
                     <div v-if="connections.length === 0" class="empty-state">
                         <span class="empty-icon">⌀</span>
                         <span>no connections</span>
                     </div>
-
                     <div
                         v-for="conn in connections"
                         :key="conn.id"
-                        class="conn-row"
-                        :class="{ active: activeConnectionId === conn.id }"
+                        class="list-row"
+                        :class="{
+                            'list-row--active': activeConnectionId === conn.id,
+                        }"
                         @click="selectConnection(conn.id)"
                     >
                         <div
-                            class="flex items-center justify-between gap-2 mb-1"
+                            class="flex items-center justify-between gap-2 mb-1 min-w-0"
                         >
-                            <span class="conn-id">{{ conn.id }}</span>
+                            <span class="row-title">{{ conn.id }}</span>
                             <span :class="stateTagClass(conn.state)">{{
                                 stateLabel(conn.state)
                             }}</span>
                         </div>
-                        <div class="conn-host">
+                        <div class="row-sub">
                             {{ conn.connection?.host ?? "—" }}
                         </div>
                     </div>
                 </div>
             </aside>
 
-            <!-- Pane 2 · Message list ───────────────────────────────── -->
-            <section class="pane pane-divider">
+            <!-- Pane 2 · Message list -->
+            <section class="pane pane--border">
                 <div class="pane-header">
-                    <span>{{ activeConnectionId ?? "Messages" }}</span>
-                    <span class="ml-auto count-badge">{{ messageCount }}</span>
+                    <span class="truncate">{{
+                        activeConnectionId ?? "Messages"
+                    }}</span>
+                    <span class="count-badge">{{ messageCount }}</span>
                 </div>
-
                 <div class="pane-scroll">
                     <div v-if="!activeConnectionId" class="empty-state">
                         <span class="empty-icon">←</span>
@@ -132,30 +141,30 @@ const messageCount = computed(() => activeMessages.value.length);
                         <span class="empty-icon">⌀</span>
                         <span>no messages</span>
                     </div>
-
                     <div
                         v-for="msg in activeMessages"
                         :key="msg.id"
-                        class="msg-row"
-                        :class="{ active: activeMessage?.id === msg.id }"
+                        class="list-row"
+                        :class="{
+                            'list-row--active': activeMessage?.id === msg.id,
+                        }"
                         @click="selectMessage(msg)"
                     >
-                        <div class="msg-from">
+                        <div class="row-title">
                             {{ formatAddress(msg.envelope?.from) }}
                         </div>
-                        <div class="msg-subject">
+                        <div class="row-sub" style="margin-top: 2px">
                             {{ msg.subject || "(no subject)" }}
                         </div>
-                        <div class="msg-date">
+                        <div class="row-date">
                             {{ formatDate(msg.envelope?.date) }}
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Pane 3 · Viewer ─────────────────────────────────────── -->
+            <!-- Pane 3 · Viewer -->
             <main class="pane viewer-pane">
-                <!-- viewer header with view toggle -->
                 <div class="pane-header">
                     <span>Message</span>
                     <div
@@ -164,74 +173,64 @@ const messageCount = computed(() => activeMessages.value.length);
                     >
                         <button
                             class="view-btn"
-                            :class="{ active: viewMode === 'text' }"
+                            :class="{ 'view-btn--active': viewMode === 'text' }"
                             @click="viewMode = 'text'"
                         >
                             Text
                         </button>
                         <button
                             class="view-btn"
-                            :class="{ active: viewMode === 'json' }"
+                            :class="{ 'view-btn--active': viewMode === 'json' }"
                             @click="viewMode = 'json'"
                         >
                             JSON
                         </button>
                     </div>
                 </div>
-
                 <div class="pane-scroll">
-                    <!-- Empty -->
                     <div v-if="!activeMessage" class="empty-state">
                         <span class="empty-icon">✉</span>
                         <span>select a message</span>
                     </div>
-
-                    <!-- Text view -->
                     <div v-else-if="viewMode === 'text'" class="viewer-content">
-                        <div class="viewer-meta">
-                            <h2 class="viewer-subject">
-                                {{ activeMessage.subject || "(no subject)" }}
-                            </h2>
-                            <dl class="meta-grid">
-                                <div class="meta-row">
-                                    <dt class="meta-label">From</dt>
-                                    <dd class="meta-value">
-                                        {{
-                                            formatAddress(
-                                                activeMessage.envelope?.from,
-                                            )
-                                        }}
-                                    </dd>
-                                </div>
-                                <div class="meta-row">
-                                    <dt class="meta-label">To</dt>
-                                    <dd class="meta-value">
-                                        {{
-                                            formatAddress(
-                                                activeMessage.envelope?.to,
-                                            )
-                                        }}
-                                    </dd>
-                                </div>
-                                <div class="meta-row">
-                                    <dt class="meta-label">Date</dt>
-                                    <dd class="meta-value">
-                                        {{
-                                            formatDate(
-                                                activeMessage.envelope?.date,
-                                            )
-                                        }}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </div>
+                        <h2 class="viewer-subject">
+                            {{ activeMessage.subject || "(no subject)" }}
+                        </h2>
+                        <dl class="meta-grid">
+                            <div class="meta-row">
+                                <dt class="meta-label">From</dt>
+                                <dd class="meta-value">
+                                    {{
+                                        formatAddress(
+                                            activeMessage.envelope?.from,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="meta-row">
+                                <dt class="meta-label">To</dt>
+                                <dd class="meta-value">
+                                    {{
+                                        formatAddress(
+                                            activeMessage.envelope?.to,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="meta-row">
+                                <dt class="meta-label">Date</dt>
+                                <dd class="meta-value">
+                                    {{
+                                        formatDate(activeMessage.envelope?.date)
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
                         <div class="viewer-divider"></div>
                         <pre class="viewer-body">{{
                             activeMessage.body_text?.[0] || "(empty)"
                         }}</pre>
                     </div>
-
-                    <!-- JSON view -->
                     <div v-else class="viewer-content">
                         <pre class="json-view" v-html="highlightedJson"></pre>
                     </div>
@@ -242,14 +241,16 @@ const messageCount = computed(() => activeMessages.value.length);
 </template>
 
 <style scoped>
+/* ── Shell ── */
 .app-shell {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-family: var(--font-mono);
     overflow: hidden;
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
 }
 
 /* ── Titlebar ── */
@@ -259,33 +260,31 @@ const messageCount = computed(() => activeMessages.value.length);
     justify-content: space-between;
     padding: 0 16px;
     height: 40px;
-    background: var(--color-surface-1);
-    border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-subtle);
 }
 .titlebar-logo {
-    color: var(--color-accent);
+    color: var(--accent);
     font-size: 14px;
     line-height: 1;
 }
 .titlebar-name {
     font-size: 13px;
     font-weight: 700;
-    color: var(--color-text);
     letter-spacing: 0.05em;
 }
 .titlebar-sub {
-    font-size: 10px;
-    color: var(--color-text-faint);
-    letter-spacing: 0.06em;
-    margin-top: 1px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
 }
 .stat-pill {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     font-size: 11px;
-    color: var(--color-text-muted);
+    color: var(--text-secondary);
 }
 .stat-dot {
     width: 6px;
@@ -293,12 +292,34 @@ const messageCount = computed(() => activeMessages.value.length);
     border-radius: 50%;
     flex-shrink: 0;
 }
-.stat-dot.running {
-    background: var(--color-green);
-    box-shadow: 0 0 6px var(--color-green);
+.stat-dot--ok {
+    background: var(--status-ok);
+    box-shadow: 0 0 5px var(--status-ok-glow);
 }
-.stat-dot.stopped {
-    background: var(--color-text-faint);
+.stat-dot--off {
+    background: var(--text-tertiary);
+}
+
+.theme-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 22px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    cursor: pointer;
+    transition:
+        color 100ms,
+        border-color 100ms;
+}
+.theme-btn:hover {
+    color: var(--text-secondary);
+    border-color: var(--border-default);
 }
 
 /* ── Layout ── */
@@ -312,8 +333,8 @@ const messageCount = computed(() => activeMessages.value.length);
     flex-direction: column;
     overflow: hidden;
 }
-.pane-divider {
-    border-right: 1px solid var(--color-border);
+.pane--border {
+    border-right: 1px solid var(--border-subtle);
 }
 aside.pane {
     width: 220px;
@@ -327,38 +348,42 @@ section.pane {
     flex: 1;
 }
 
+/* ── Pane header ── */
 .pane-header {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 0 12px;
     height: 32px;
-    background: var(--color-surface-1);
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    flex-shrink: 0;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-tertiary);
     font-size: 10px;
     font-weight: 600;
-    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }
 
 .count-badge {
-    font-size: 10px;
-    color: var(--color-text-faint);
-    background: var(--color-surface-3);
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 0 6px;
-    height: 16px;
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-sunken);
+    color: var(--text-tertiary);
+    font-size: 10px;
     letter-spacing: 0;
 }
 
+/* ── Pane scroll ── */
 .pane-scroll {
     flex: 1;
     overflow-y: auto;
+    background: var(--surface-base);
 }
 
 /* ── Empty state ── */
@@ -369,81 +394,53 @@ section.pane {
     justify-content: center;
     gap: 6px;
     height: 100%;
-    color: var(--color-text-faint);
+    color: var(--text-tertiary);
     font-size: 11px;
     letter-spacing: 0.04em;
 }
 .empty-icon {
     font-size: 20px;
-    opacity: 0.3;
+    opacity: 0.25;
 }
 
-/* ── Connection rows ── */
-.conn-row {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
+/* ── List rows ── */
+.list-row {
+    padding: 9px 12px 9px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    border-left: 2px solid transparent;
     cursor: pointer;
-    transition: background 100ms ease;
+    transition: background 80ms ease;
 }
-.conn-row:hover {
-    background: var(--color-surface-2);
+.list-row:hover {
+    background: var(--surface-overlay);
 }
-.conn-row.active {
-    background: var(--color-accent-dim);
-    border-left: 2px solid var(--color-accent);
-    padding-left: 10px;
+.list-row--active {
+    border-left-color: var(--accent);
+    background: var(--surface-overlay);
 }
-.conn-id {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.conn-host {
-    font-size: 11px;
-    color: var(--color-text-faint);
-    margin-top: 2px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.list-row--active .row-title {
+    color: var(--accent);
 }
 
-/* ── Message rows ── */
-.msg-row {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--color-border);
-    cursor: pointer;
-    transition: background 100ms ease;
-}
-.msg-row:hover {
-    background: var(--color-surface-2);
-}
-.msg-row.active {
-    background: var(--color-accent-dim);
-    border-left: 2px solid var(--color-accent);
-    padding-left: 10px;
-}
-.msg-from {
+.row-title {
     font-size: 12px;
     font-weight: 600;
-    color: var(--color-text);
+    color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: color 80ms;
 }
-.msg-subject {
+.row-sub {
     font-size: 11px;
-    color: var(--color-text-muted);
-    margin-top: 2px;
+    color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.msg-date {
+.row-date {
     font-size: 10px;
-    color: var(--color-text-faint);
+    color: var(--text-tertiary);
     margin-top: 3px;
 }
 
@@ -451,65 +448,65 @@ section.pane {
 .tag {
     display: inline-flex;
     align-items: center;
-    padding: 0 6px;
+    padding: 0 5px;
     border-radius: 3px;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    height: 17px;
+    height: 16px;
     flex-shrink: 0;
 }
-.tag-green {
-    background: rgba(52, 211, 153, 0.12);
-    color: var(--color-green);
+.tag-ok {
+    background: color-mix(in srgb, var(--status-ok) 12%, transparent);
+    color: var(--status-ok);
 }
-.tag-amber {
-    background: rgba(251, 191, 36, 0.12);
-    color: var(--color-amber);
+.tag-warn {
+    background: color-mix(in srgb, var(--status-warn) 12%, transparent);
+    color: var(--status-warn);
 }
-.tag-red {
-    background: rgba(248, 113, 113, 0.12);
-    color: var(--color-red);
+.tag-error {
+    background: color-mix(in srgb, var(--status-error) 12%, transparent);
+    color: var(--status-error);
 }
-.tag-gray {
-    background: var(--color-surface-3);
-    color: var(--color-text-faint);
+.tag-muted {
+    background: var(--surface-sunken);
+    color: var(--text-tertiary);
 }
 
-/* ── View toggle buttons ── */
+/* ── View toggle ── */
 .view-btn {
-    padding: 2px 8px;
+    padding: 2px 7px;
     border-radius: 3px;
-    cursor: pointer;
+    border: 1px solid var(--border-subtle);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-text-faint);
-    border: 1px solid var(--color-border);
-    background: transparent;
-    transition: all 100ms ease;
-    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 80ms ease;
 }
 .view-btn:hover {
-    color: var(--color-text-muted);
-    border-color: var(--color-border-bright);
+    color: var(--text-secondary);
+    border-color: var(--border-default);
 }
-.view-btn.active {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: var(--color-accent-glow);
+.view-btn--active {
+    color: var(--accent);
+    border-color: var(--accent-border);
+    background: var(--accent-subtle);
 }
 
-/* ── Message viewer ── */
+/* ── Viewer ── */
 .viewer-content {
-    padding: 20px 24px;
+    padding: 22px 26px;
 }
 .viewer-subject {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    color: var(--color-text);
-    margin: 0 0 14px 0;
+    color: var(--text-primary);
+    margin: 0 0 14px;
     line-height: 1.3;
     letter-spacing: -0.01em;
 }
@@ -520,32 +517,32 @@ section.pane {
 }
 .meta-row {
     display: flex;
-    gap: 12px;
+    gap: 14px;
     align-items: baseline;
 }
 .meta-label {
     font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--color-text-faint);
-    font-weight: 600;
+    color: var(--text-tertiary);
     width: 32px;
     flex-shrink: 0;
 }
 .meta-value {
     font-size: 12px;
-    color: var(--color-text-muted);
+    color: var(--text-secondary);
 }
 .viewer-divider {
     height: 1px;
-    background: var(--color-border);
+    background: var(--border-subtle);
     margin: 18px 0;
 }
 .viewer-body {
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.7;
-    color: var(--color-text-muted);
+    color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
@@ -557,7 +554,7 @@ section.pane {
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.65;
-    color: var(--color-text-muted);
+    color: var(--text-secondary);
     white-space: pre;
     overflow-x: auto;
 }
@@ -565,15 +562,15 @@ section.pane {
     color: #a78bfa;
 }
 :deep(.json-string) {
-    color: #86efac;
+    color: color-mix(in srgb, var(--status-ok) 90%, var(--text-primary));
 }
 :deep(.json-number) {
-    color: #fb923c;
+    color: color-mix(in srgb, var(--status-warn) 90%, var(--text-primary));
 }
 :deep(.json-bool) {
     color: #38bdf8;
 }
 :deep(.json-null) {
-    color: var(--color-text-faint);
+    color: var(--text-tertiary);
 }
 </style>
