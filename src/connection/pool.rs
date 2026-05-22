@@ -6,7 +6,10 @@ use tracing::instrument;
 
 use crate::{
     background::command::BackgroundCommand,
-    connection::task::{run_connection_task, ConnectionTask},
+    connection::{
+        task::{run_connection_task, ConnectionTask},
+        types::ConnectionInfo,
+    },
     data::Data,
     settings::Settings,
 };
@@ -61,6 +64,15 @@ impl ConnectionPool {
 
     pub fn list_connections(&self) -> impl Iterator<Item = (&ConnectionId, &ConnectionHandle)> {
         self.pool.iter()
+    }
+
+    pub async fn list_connection_info(&self) -> eyre::Result<Vec<ConnectionInfo>> {
+        let mut connections = Vec::new();
+        for (_, connection) in self.list_connections() {
+            connections.push(connection.info().await?);
+        }
+
+        Ok(connections)
     }
 
     pub fn get_connection(&self, id: &ConnectionId) -> Option<&ConnectionHandle> {

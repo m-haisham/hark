@@ -6,6 +6,7 @@ use hark::{
     background::BackgroundPool,
     connection::pool::ConnectionPool,
     data::Data,
+    frontend::FrontendBroadcaster,
     session::pool::SessionPool,
     settings::{get_config, Settings},
     startup::run,
@@ -86,6 +87,7 @@ pub async fn spawn_app_with_settings(mut settings: Settings) -> TestApp {
         session_pool: Mutex::new(session_pool),
         anchor,
         settings: settings.clone(),
+        frontend: FrontendBroadcaster::new(),
     });
 
     {
