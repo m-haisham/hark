@@ -6,10 +6,14 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
 };
+use tokio_rustls::{
+    rustls::{pki_types::ServerName, ClientConfig, RootCertStore},
+    TlsConnector,
+};
 
 use crate::connection::types::ImapFlavour;
 use eyre::eyre;
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use super::session::TlsConnection;
 
@@ -70,8 +74,17 @@ impl async_imap::Authenticator for XOAuth2Authenticator<'_> {
 pub async fn imap_connect_tls(
     config: &ImapConnectionConfig,
 ) -> eyre::Result<Session<TlsConnection>> {
+    let mut root_cert_store = RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().unwrap() {
+        root_cert_store.add(cert).unwrap();
+    }
+
+    let rustls_config = ClientConfig::builder()
+        .with_root_certificates(root_cert_store)
+        .with_no_client_auth();
+
     let addr = (config.host.as_str(), config.port);
-    let stream = TcpStream::connect(addr)
+    let tcp_stream = TcpStream::connect(addr)
         .await
         .map_err(|e| eyre::eyre!(e))
         .wrap_err_with(|| {
@@ -81,17 +94,12 @@ pub async fn imap_connect_tls(
             )
         })?;
 
-    let stream = async_native_tls::connect(&config.host, stream)
-        .await
-        .map_err(|e| eyre::eyre!(e))
-        .wrap_err_with(|| {
-            format!(
-                "Failed to establish TLS connection to IMAP server at {}:{}",
-                config.host, config.port
-            )
-        })?;
+    let connector = TlsConnector::from(Arc::new(rustls_config));
 
-    let client = create_client(config, stream).await?;
+    let server_name = ServerName::try_from(config.host.as_str())?.to_owned();
+    let tls_stream = connector.connect(server_name, tcp_stream).await?;
+
+    let client = create_client(config, tls_stream).await?;
 
     imap_auth(client, &config.auth)
         .await

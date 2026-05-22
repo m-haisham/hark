@@ -2,9 +2,9 @@ use async_imap::{
     types::{Capabilities, Capability, Mailbox, UnsolicitedResponse},
     Session,
 };
-use async_native_tls::TlsStream;
 use eyre::{eyre, Context};
 use tokio::net::TcpStream;
+use tokio_rustls::client::TlsStream;
 
 use crate::imap::{
     connect::{imap_connect_tcp, imap_connect_tls, ImapConnectionConfig},
