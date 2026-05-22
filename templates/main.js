@@ -1,7 +1,9 @@
 Alpine.store('app', {
   connections: [],
   activeConnectionId: null,
-  messages: [],
+  messages: {
+    // connectionId: [msg1, msg2, ...]
+  },
   activeMessage: null,
 
   init() {
@@ -12,6 +14,17 @@ Alpine.store('app', {
       if (!this.activeConnectionId && this.connections.length > 0) {
         this.activeConnectionId = this.connections[0].id
       }
+    })
+
+    this.source.addEventListener('message', (e) => {
+      const payload = JSON.parse(e.data)
+      const id = payload.connection_id
+      if (!this.messages[id]) {
+        this.messages = { ...this.messages, [id]: [] }
+      }
+
+      this.messages[id].push(payload.message)
+      this.messages = { ...this.messages }
     })
 
     this.source.onerror = () => {
@@ -25,6 +38,10 @@ Alpine.store('app', {
     )
   },
 
+  get activeMessages() {
+    return this.messages[this.activeConnectionId] || []
+  },
+
   selectConnection(id) {
     this.activeConnectionId = id
     this.activeMessage = null
@@ -32,6 +49,17 @@ Alpine.store('app', {
 
   selectMessage(msg) {
     this.activeMessage = msg
+  },
+
+  formatAddress(addr) {
+    if (!addr) return '—'
+    const addrs =
+      addr.List || (addr.Group ? addr.Group.flatMap((g) => g.addresses) : [])
+    return (
+      addrs
+        .map((a) => (a.name ? `${a.name} <${a.email}>` : a.email))
+        .join(', ') || '—'
+    )
   },
 
   stateLabel(state) {
