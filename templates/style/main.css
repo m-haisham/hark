@@ -20,4 +20,8 @@
     .text-faint {
         @apply text-gray-500 dark:text-gray-500;
     }
+
+    .item-active {
+        @apply bg-indigo-600 text-white;
+    }
 }
