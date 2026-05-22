@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+@layer base {
+    body {
+        @apply text-black dark:text-white;
+    }
+
+    .bg-default {
+        @apply bg-gray-100 dark:bg-gray-900;
+    }
+
+    .text-muted {
+        @apply text-gray-800 dark:text-gray-200;
+    }
+
+    .text-dimmed {
+        @apply text-gray-700 dark:text-gray-300;
+    }
+
+    .text-faint {
+        @apply text-gray-500 dark:text-gray-500;
+    }
+}
