@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod ui;
 
 use axum::{http::StatusCode, response::IntoResponse};
 
