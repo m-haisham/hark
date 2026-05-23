@@ -12,4 +12,10 @@ down:
     docker-compose down
 
 dev:
-    tailwindcss -i ./templates/style/main.css -o ./dist/output.css --watch
+    npm run dev
+
+build-frontend:
+    npm install && npm run build
+
+run:
+    cargo run

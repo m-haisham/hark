@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* Use .dark class on <html> for dark mode (driven by VueUse useDark) */
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-mono:
+        "Berkeley Mono", "TX-02", "Geist Mono", "IBM Plex Mono", ui-monospace,
+        monospace;
+}
+
+/* ── Light theme (default) ── */
+:root {
+    --surface-base: #f5f5f7;
+    --surface-raised: #ffffff;
+    --surface-overlay: #ebebed;
+    --surface-sunken: #e0e0e4;
+
+    --border-subtle: #d8d8de;
+    --border-default: #c4c4cc;
+
+    --text-primary: #111113;
+    --text-secondary: #5a5a68;
+    --text-tertiary: #9898a8;
+
+    --accent: #5b4de8;
+    --accent-subtle: rgba(91, 77, 232, 0.07);
+    --accent-border: rgba(91, 77, 232, 0.3);
+
+    --status-ok: #059669;
+    --status-ok-glow: rgba(5, 150, 105, 0.4);
+    --status-warn: #d97706;
+    --status-error: #dc2626;
+}
+
+/* ── Dark theme ── */
+.dark {
+    --surface-base: #0e0e10;
+    --surface-raised: #141416;
+    --surface-overlay: #1c1c1f;
+    --surface-sunken: #242428;
+
+    --border-subtle: #2a2a2f;
+    --border-default: #3a3a42;
+
+    --text-primary: #e8e8ec;
+    --text-secondary: #9494a0;
+    --text-tertiary: #55555f;
+
+    --accent: #7c6af7;
+    --accent-subtle: rgba(124, 106, 247, 0.1);
+    --accent-border: rgba(124, 106, 247, 0.35);
+
+    --status-ok: #34d399;
+    --status-ok-glow: rgba(52, 211, 153, 0.4);
+    --status-warn: #fbbf24;
+    --status-error: #f87171;
+}
+
+/*
+ * Map raw CSS vars → Tailwind v4 color tokens via @theme inline.
+ * Using `inline` means Tailwind references the var() at runtime, so
+ * dark-mode overrides in .dark {} are picked up automatically.
+ *
+ * Generated utility examples:
+ *   bg-surface-base       border-border-subtle    text-primary
+ *   bg-surface-raised     border-border-default   text-secondary
+ *   bg-surface-overlay    border-accent           text-tertiary
+ *   bg-surface-sunken     border-accent-border    text-accent
+ *   bg-accent             bg-accent-subtle        text-status-ok
+ *   bg-status-ok/10       text-status-warn        text-status-error
+ */
+@theme inline {
+    /* Surfaces */
+    --color-surface-base: var(--surface-base);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-overlay: var(--surface-overlay);
+    --color-surface-sunken: var(--surface-sunken);
+
+    /* Borders */
+    --color-border-subtle: var(--border-subtle);
+    --color-border-default: var(--border-default);
+
+    /* Text */
+    --color-primary: var(--text-primary);
+    --color-secondary: var(--text-secondary);
+    --color-tertiary: var(--text-tertiary);
+
+    /* Accent */
+    --color-accent: var(--accent);
+    --color-accent-subtle: var(--accent-subtle);
+    --color-accent-border: var(--accent-border);
+
+    /* Status */
+    --color-status-ok: var(--status-ok);
+    --color-status-ok-glow: var(--status-ok-glow);
+    --color-status-warn: var(--status-warn);
+    --color-status-error: var(--status-error);
+}
+
+@layer base {
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+    html,
+    body {
+        height: 100%;
+        margin: 0;
+        background: var(--surface-base);
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: var(--color-border-default);
+        border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-tertiary);
+    }
+}

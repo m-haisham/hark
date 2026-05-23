@@ -1,6 +1,6 @@
 use chrono::Utc;
-use eyre::{eyre, WrapErr};
-use oauth2::{basic::BasicClient, TokenResponse};
+use eyre::{WrapErr, eyre};
+use oauth2::{TokenResponse, basic::BasicClient};
 use std::time::Duration;
 
 use crate::data::Data;
@@ -96,6 +96,7 @@ pub async fn refresh_access_token(
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .tls_built_in_root_certs(true)
         .build()
         .map_err(|e| eyre!(e))
         .wrap_err("Failed to build HTTP client")?;

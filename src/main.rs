@@ -7,7 +7,7 @@ use hark::{
     background::BackgroundPool,
     connection::pool::ConnectionPool,
     data::Data,
-    frontend::{FrontendBroadcaster, FrontendEvent},
+    frontend::FrontendBroadcaster,
     session::pool::SessionPool,
     settings::{self, AnchorSettings},
     startup::{self, shutdown_signal},
@@ -18,6 +18,10 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     HookBuilder::default()
         .theme(Theme::new())
         .install()
@@ -115,6 +119,7 @@ async fn main() -> eyre::Result<()> {
 async fn create_anchor(anchor_settings: AnchorSettings) -> Anchor {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .tls_built_in_root_certs(true)
         .build()
         .expect("Failed to build reqwest client");
 

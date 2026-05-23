@@ -26,16 +26,16 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.11.0", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots-no-provider"] }
 color-eyre = "0.6.3"
 eyre = "0.6.12"
 tracing-error = "0.2.0"
 dashmap = "6.1.0"
 oauth2 = { version = "5.0.0" }
-askama = "0.16.0"
-askama_web = { version = "0.16.0", features = ["axum-0.8"] }
+
 tokio-stream = { version = "0.1.18", features = ["sync"] }
-tokio-rustls = "0.26.4"
+tokio-rustls = { version = "0.26.4", features = ["aws-lc-rs"]}
+rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
 rustls-native-certs = "0.8.3"
 
 [dependencies.async-imap]
