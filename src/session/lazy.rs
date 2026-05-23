@@ -17,9 +17,9 @@
 use std::sync::{Arc, Mutex};
 
 use async_channel::RecvError;
-use eyre::{eyre, Context};
+use eyre::{Context, eyre};
 use tokio::{sync::mpsc, task::JoinHandle, time::MissedTickBehavior};
-use tracing::{instrument, Span};
+use tracing::{Span, instrument};
 
 use crate::{
     background::command::{BackgroundCommand, SessionEvent},
@@ -29,7 +29,7 @@ use crate::{
         types::{ConnectionEvent, ConnectionEventKind, ConnectionId},
     },
     data::Data,
-    imap::{session::ImapSession, MessageParseResult},
+    imap::{MessageParseResult, session::ImapSession},
     settings::LazySettings,
 };
 
@@ -271,17 +271,12 @@ async fn event_listener(
             None => {
                 tracing::info!("Event channel closed, exiting lazy session");
 
-                let result = background_sender
+                // We can ignore the error here since it just means the background thread has stopped and we want to exit anyway
+                let _ = background_sender
                     .send(BackgroundCommand::SessionEvent(SessionEvent::Exited(
                         connection_id.clone(),
                     )))
-                    .await
-                    .map_err(|e| eyre!(e))
-                    .wrap_err("Failed to send session closed event");
-
-                if let Err(e) = result {
-                    tracing::error!("{:?}", e);
-                }
+                    .await;
 
                 break;
             }
