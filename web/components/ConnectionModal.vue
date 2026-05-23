@@ -119,36 +119,22 @@ async function handleDelete() {
 <template>
     <!-- Overlay -->
     <div
-        class="fixed inset-0 z-50 flex items-center justify-center"
-        style="background: rgba(0, 0, 0, 0.6)"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
         @click.self="emit('close')"
     >
         <!-- Panel -->
         <div
-            class="flex flex-col w-[440px] max-w-[calc(100vw-2rem)] rounded-md overflow-hidden"
-            style="
-                background: var(--surface-raised);
-                border: 1px solid var(--border-default);
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-                color: var(--text-primary);
-                font-family: var(--font-mono);
-                font-size: 12px;
-            "
+            class="flex flex-col w-[440px] max-w-[calc(100vw-2rem)] rounded-md overflow-hidden bg-surface-raised border border-border-default shadow-2xl text-primary font-mono text-xs"
             role="dialog"
             aria-modal="true"
         >
             <!-- Header -->
             <div
-                class="flex items-center justify-between px-4 h-10 shrink-0"
-                style="
-                    background: var(--surface-overlay);
-                    border-bottom: 1px solid var(--border-subtle);
-                "
+                class="flex items-center justify-between px-4 h-10 shrink-0 bg-surface-overlay border-b border-border-subtle"
             >
                 <div class="flex items-center gap-2">
                     <span
-                        class="text-[11px] font-bold uppercase tracking-widest"
-                        style="color: var(--text-secondary)"
+                        class="text-xs font-bold uppercase tracking-widest text-secondary"
                     >
                         {{
                             mode === "create"
@@ -158,12 +144,7 @@ async function handleDelete() {
                     </span>
                     <span
                         v-if="mode === 'edit'"
-                        class="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded"
-                        style="
-                            color: var(--text-tertiary);
-                            background: var(--surface-sunken);
-                            border: 1px solid var(--border-subtle);
-                        "
+                        class="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-px rounded text-tertiary bg-surface-sunken border border-border-subtle"
                         >edit</span
                     >
                 </div>
@@ -177,7 +158,6 @@ async function handleDelete() {
 
             <!-- Body -->
             <div class="flex flex-col gap-3 p-4 overflow-y-auto">
-                <!-- Name (create only) -->
                 <AppField
                     v-if="mode === 'create'"
                     label="Name"
@@ -187,7 +167,6 @@ async function handleDelete() {
                     <AppInput v-model="form.name" placeholder="my_connection" />
                 </AppField>
 
-                <!-- Host -->
                 <AppField label="Host" :required="true">
                     <AppInput
                         v-model="form.host"
@@ -195,7 +174,6 @@ async function handleDelete() {
                     />
                 </AppField>
 
-                <!-- Port + TLS -->
                 <div class="flex gap-3 items-end">
                     <AppField label="Port" class="w-28 shrink-0">
                         <AppInput
@@ -209,7 +187,6 @@ async function handleDelete() {
                     </div>
                 </div>
 
-                <!-- Username -->
                 <AppField label="Username" :required="true">
                     <AppInput
                         v-model="form.username"
@@ -217,7 +194,6 @@ async function handleDelete() {
                     />
                 </AppField>
 
-                <!-- Password -->
                 <AppField label="Password" :required="mode === 'create'">
                     <AppInput
                         v-model="form.password"
@@ -229,7 +205,6 @@ async function handleDelete() {
                     />
                 </AppField>
 
-                <!-- Mailbox + Flavour -->
                 <div class="flex gap-3">
                     <AppField label="Mailbox" class="flex-1">
                         <AppInput v-model="form.mailbox" placeholder="INBOX" />
@@ -243,30 +218,32 @@ async function handleDelete() {
                 </div>
 
                 <!-- Test result -->
-                <div v-if="testStatus === 'ok'" class="feedback feedback-ok">
+                <div
+                    v-if="testStatus === 'ok'"
+                    class="flex items-start gap-1.5 text-xs px-2 py-1.5 rounded border text-status-ok bg-status-ok/10 border-status-ok/25"
+                >
                     <span class="font-bold">✓</span> connected
                 </div>
                 <div
                     v-else-if="testStatus === 'error'"
-                    class="feedback feedback-error"
+                    class="flex items-start gap-1.5 text-xs px-2 py-1.5 rounded border text-status-error bg-status-error/10 border-status-error/25"
                 >
                     <span class="font-bold">✗</span>
                     {{ testError || "connection failed" }}
                 </div>
 
                 <!-- Save error -->
-                <div v-if="error" class="feedback feedback-error">
+                <div
+                    v-if="error"
+                    class="flex items-start gap-1.5 text-xs px-2 py-1.5 rounded border text-status-error bg-status-error/10 border-status-error/25"
+                >
                     <span class="font-bold">✗</span> {{ error }}
                 </div>
             </div>
 
             <!-- Footer -->
             <div
-                class="flex items-center justify-between gap-2 px-4 py-2.5 shrink-0"
-                style="
-                    background: var(--surface-overlay);
-                    border-top: 1px solid var(--border-subtle);
-                "
+                class="flex items-center justify-between gap-2 px-4 py-2.5 shrink-0 bg-surface-overlay border-t border-border-subtle"
             >
                 <!-- Left: delete -->
                 <div class="flex items-center gap-2">
@@ -275,14 +252,11 @@ async function handleDelete() {
                             variant="danger"
                             :disabled="loading"
                             @click="confirmDelete = true"
+                            >Delete</AppButton
                         >
-                            Delete
-                        </AppButton>
                     </template>
                     <template v-else-if="mode === 'edit' && confirmDelete">
-                        <span
-                            class="text-[11px] font-semibold"
-                            style="color: var(--status-error)"
+                        <span class="text-xs font-semibold text-status-error"
                             >Confirm?</span
                         >
                         <AppButton
@@ -327,25 +301,3 @@ async function handleDelete() {
         </div>
     </div>
 </template>
-
-<style>
-.feedback {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    font-size: 11px;
-    padding: 6px 8px;
-    border-radius: 4px;
-    line-height: 1.4;
-}
-.feedback-ok {
-    color: var(--status-ok);
-    background: color-mix(in srgb, var(--status-ok) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--status-ok) 25%, transparent);
-}
-.feedback-error {
-    color: var(--status-error);
-    background: color-mix(in srgb, var(--status-error) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--status-error) 25%, transparent);
-}
-</style>

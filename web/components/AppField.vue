@@ -7,34 +7,15 @@ defineProps({
 </script>
 
 <template>
-    <div class="app-field">
-        <label v-if="label" class="app-field-label">
-            {{ label }}<span v-if="required" class="app-field-required">*</span>
+    <div class="flex flex-col gap-1">
+        <label
+            v-if="label"
+            class="text-[10px] font-semibold uppercase tracking-widest text-tertiary"
+        >
+            {{ label
+            }}<span v-if="required" class="text-status-error ml-0.5">*</span>
         </label>
         <slot />
-        <span v-if="hint" class="app-field-hint">{{ hint }}</span>
+        <span v-if="hint" class="text-[10px] text-tertiary">{{ hint }}</span>
     </div>
 </template>
-
-<style>
-.app-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.app-field-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-tertiary);
-}
-.app-field-required {
-    color: var(--status-error);
-    margin-left: 2px;
-}
-.app-field-hint {
-    font-size: 10px;
-    color: var(--text-tertiary);
-}
-</style>

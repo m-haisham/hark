@@ -57,6 +57,47 @@
     --status-error: #f87171;
 }
 
+/*
+ * Map raw CSS vars → Tailwind v4 color tokens via @theme inline.
+ * Using `inline` means Tailwind references the var() at runtime, so
+ * dark-mode overrides in .dark {} are picked up automatically.
+ *
+ * Generated utility examples:
+ *   bg-surface-base       border-border-subtle    text-primary
+ *   bg-surface-raised     border-border-default   text-secondary
+ *   bg-surface-overlay    border-accent           text-tertiary
+ *   bg-surface-sunken     border-accent-border    text-accent
+ *   bg-accent             bg-accent-subtle        text-status-ok
+ *   bg-status-ok/10       text-status-warn        text-status-error
+ */
+@theme inline {
+    /* Surfaces */
+    --color-surface-base: var(--surface-base);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-overlay: var(--surface-overlay);
+    --color-surface-sunken: var(--surface-sunken);
+
+    /* Borders */
+    --color-border-subtle: var(--border-subtle);
+    --color-border-default: var(--border-default);
+
+    /* Text */
+    --color-primary: var(--text-primary);
+    --color-secondary: var(--text-secondary);
+    --color-tertiary: var(--text-tertiary);
+
+    /* Accent */
+    --color-accent: var(--accent);
+    --color-accent-subtle: var(--accent-subtle);
+    --color-accent-border: var(--accent-border);
+
+    /* Status */
+    --color-status-ok: var(--status-ok);
+    --color-status-ok-glow: var(--status-ok-glow);
+    --color-status-warn: var(--status-warn);
+    --color-status-error: var(--status-error);
+}
+
 @layer base {
     *,
     *::before,
@@ -83,10 +124,10 @@
         background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-        background: var(--border-default);
+        background: var(--color-border-default);
         border-radius: 2px;
     }
     ::-webkit-scrollbar-thumb:hover {
-        background: var(--text-tertiary);
+        background: var(--color-tertiary);
     }
 }

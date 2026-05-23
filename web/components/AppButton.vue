@@ -18,6 +18,8 @@ defineProps({
 </template>
 
 <style>
+@reference "../style.css";
+
 .btn {
     display: inline-flex;
     align-items: center;
@@ -46,40 +48,30 @@ defineProps({
 }
 
 .btn-primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
+    @apply bg-accent border-accent text-white;
 }
 .btn-primary:hover:not(:disabled) {
     filter: brightness(1.12);
 }
 
 .btn-secondary {
-    background: var(--surface-overlay);
-    border-color: var(--border-default);
-    color: var(--text-secondary);
+    @apply bg-surface-overlay border-border-default text-secondary;
 }
 .btn-secondary:hover:not(:disabled) {
-    background: var(--surface-sunken);
-    color: var(--text-primary);
+    @apply bg-surface-sunken text-primary;
 }
 
 .btn-ghost {
-    background: transparent;
-    border-color: transparent;
-    color: var(--text-tertiary);
+    @apply bg-transparent border-transparent text-tertiary;
 }
 .btn-ghost:hover:not(:disabled) {
-    background: var(--surface-overlay);
-    color: var(--text-secondary);
+    @apply bg-surface-overlay text-secondary;
 }
 
 .btn-danger {
-    background: color-mix(in srgb, var(--status-error) 12%, transparent);
-    border-color: color-mix(in srgb, var(--status-error) 28%, transparent);
-    color: var(--status-error);
+    @apply bg-status-error/10 border-status-error/25 text-status-error;
 }
 .btn-danger:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--status-error) 20%, transparent);
+    @apply bg-status-error/20;
 }
 </style>

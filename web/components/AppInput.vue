@@ -14,7 +14,7 @@ function onInput(e) {
 
 <template>
     <input
-        class="app-input"
+        class="w-full rounded font-mono text-xs px-2 py-1.5 outline-none transition bg-surface-base border border-border-default text-primary placeholder:text-tertiary focus:border-accent focus:ring-2 focus:ring-accent-subtle"
         :type="props.type"
         :value="model"
         :placeholder="props.placeholder"
@@ -23,27 +23,3 @@ function onInput(e) {
         @input="onInput"
     />
 </template>
-
-<style>
-.app-input {
-    width: 100%;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    outline: none;
-    transition:
-        border-color 80ms,
-        box-shadow 80ms;
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    color: var(--text-primary);
-    padding: 5px 8px;
-}
-.app-input::placeholder {
-    color: var(--text-tertiary);
-}
-.app-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-subtle);
-}
-</style>
