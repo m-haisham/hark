@@ -16,6 +16,7 @@ pub enum FrontendEvent {
         connection_id: ConnectionId,
         message: Message,
     },
+    Shutdown,
 }
 
 impl FrontendEvent {
@@ -23,6 +24,7 @@ impl FrontendEvent {
         let event = match self {
             FrontendEvent::Connections(_) => "connections",
             FrontendEvent::Message { .. } => "message",
+            FrontendEvent::Shutdown => "shutdown",
         };
 
         let data = serde_json::to_string(self)
@@ -51,5 +53,9 @@ impl FrontendBroadcaster {
     pub fn send(&self, event: FrontendEvent) {
         // The receiver will be dropped if there are no subscribers, so we can ignore the error.
         let _ = self.sender.send(event);
+    }
+
+    pub fn shutdown(&self) {
+        self.send(FrontendEvent::Shutdown);
     }
 }

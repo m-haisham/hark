@@ -90,7 +90,9 @@ async fn main() -> eyre::Result<()> {
         .await
         .expect("Failed to bind the server");
 
-    server.with_graceful_shutdown(shutdown_signal()).await?;
+    server
+        .with_graceful_shutdown(shutdown_signal(Arc::clone(&state)))
+        .await?;
 
     {
         tracing::info!("Stopping all connection tasks...");

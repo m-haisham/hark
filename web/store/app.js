@@ -29,6 +29,14 @@ function initSSE() {
     messages.value = { ...messages.value, [id]: [...current, message] }
   })
 
+  source.addEventListener('shutdown', (e) => {
+    source.close()
+    connections.value = []
+    activeConnectionId.value = null
+    messages.value = {}
+    activeMessage.value = null
+  })
+
   source.onerror = () => console.warn('SSE connection lost, reconnecting...')
 }
 

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
 use tokio::{net::TcpListener, signal};
 use tower_http::trace::TraceLayer;
@@ -38,7 +38,7 @@ pub async fn run(listener: TcpListener, state: Arc<AppState>) -> Result<Server, 
     Ok(server)
 }
 
-pub async fn shutdown_signal() {
+pub async fn shutdown_signal(state: Arc<AppState>) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -57,7 +57,13 @@ pub async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+        _ = ctrl_c => {
+            tracing::info!("Received Ctrl+C, shutting down");
+            state.frontend.shutdown();
+        },
+        _ = terminate => {
+            tracing::info!("Received terminate signal, shutting down");
+            state.frontend.shutdown();
+        },
     }
 }
