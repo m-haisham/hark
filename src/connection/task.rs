@@ -1,16 +1,12 @@
-use std::{
-    fmt::Debug,
-    sync::Arc,
-    time::{self},
-};
+use std::{fmt::Debug, sync::Arc};
 
-use async_imap::{types::Mailbox, Session};
+use async_imap::{Session, types::Mailbox};
 use chrono::{DateTime, Utc};
-use eyre::{eyre, Context};
+use eyre::{Context, eyre};
 use stop_token::StopSource;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, Mutex},
+    sync::{mpsc, watch},
 };
 use tracing::instrument;
 
@@ -22,10 +18,10 @@ use crate::{
     },
     data::Data,
     imap::{
+        ImapListenError,
         connect::{ImapAuth, ImapConnectionConfig},
         handle_idle_event, handle_idle_response,
         session::ImapSession,
-        ImapListenError,
     },
     settings::IdleSettings,
     window::EventWindow,
@@ -42,22 +38,16 @@ pub struct ConnectionTask {
     pub idle_settings: IdleSettings,
 }
 
-#[derive(Debug)]
-pub struct ConnectionTaskState {
-    pub stop: bool,
-}
-
 #[instrument(name = "Listen for commands to connection", skip_all, fields(id = %id))]
 async fn listen_command(
     mut receiver: mpsc::Receiver<ConnectionCommand>,
     id: ConnectionId,
-    state: Arc<Mutex<ConnectionTaskState>>,
+    stop_tx: watch::Sender<bool>,
 ) {
     while let Some(command) = receiver.recv().await {
         match command {
             ConnectionCommand::Stop => {
-                let mut state = state.lock().await;
-                state.stop = true;
+                let _ = stop_tx.send(true);
                 tracing::info!("Connection received stop command");
                 return;
             }
@@ -106,8 +96,8 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
         .map_err(|e| eyre::eyre!(e))
         .wrap_err("Failed to send starting event to background task")?;
 
-    let state = Arc::new(Mutex::new(ConnectionTaskState { stop: false }));
-    let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), state.clone()));
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let listen_handle = tokio::spawn(listen_command(receiver, id.clone(), stop_tx));
 
     let mut error_window = EventWindow::new();
 
@@ -116,7 +106,7 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
             .await
             .wrap_err("Failed to get refreshed connection from data store")?;
 
-        let state = Arc::clone(&state);
+        let stop_rx = stop_rx.clone();
 
         let connection_config = imap_connection_config(&connection);
 
@@ -150,10 +140,10 @@ pub async fn run_connection_task_inner(task: ConnectionTask) -> eyre::Result<()>
 
         let result = match session {
             ImapSession::Tcp(session) => {
-                idle(&id, connection, session, state, mailbox, &background).await
+                idle(&id, connection, session, stop_rx, mailbox, &background).await
             }
             ImapSession::Tls(session) => {
-                idle(&id, connection, session, state, mailbox, &background).await
+                idle(&id, connection, session, stop_rx, mailbox, &background).await
             }
         };
 
@@ -249,7 +239,7 @@ async fn idle<T>(
     id: &ConnectionId,
     connection: Connection,
     mut session: Session<T>,
-    state: Arc<Mutex<ConnectionTaskState>>,
+    stop_rx: watch::Receiver<bool>,
     mut mailbox: Mailbox,
     background_sender: &async_channel::Sender<BackgroundCommand>,
 ) -> Result<(), IdleError>
@@ -271,10 +261,9 @@ where
     loop {
         let (idle_wait, interrupt) = idle.wait();
 
-        // check state for stop every 10 seconds and drop interrupt if stop is true
         let response_result = tokio::select! {
             result = idle_wait => result,
-            _ = drop_interrupt_when_stopped(state.clone(), interrupt) => break,
+            _ = drop_interrupt_when_stopped(stop_rx.clone(), interrupt) => break,
             _ = terminate_on_expired(expires_at) => return Err(IdleError::Expired),
         };
 
@@ -306,7 +295,7 @@ where
             Err(ImapListenError::Imap(e)) => {
                 return Err(IdleError::Other(
                     eyre!(e).wrap_err("Error while handling response"),
-                ))
+                ));
             }
         };
 
@@ -330,26 +319,10 @@ where
     Ok(())
 }
 
-async fn drop_interrupt_when_stopped(
-    state: Arc<Mutex<ConnectionTaskState>>,
-    interrupt: StopSource,
-) {
-    loop {
-        let stop = {
-            let lock = state.lock().await;
-            lock.stop
-        };
-
-        if stop {
-            tracing::info!("Dropping interrupt for connection task as it is stopped");
-            drop(interrupt);
-            break;
-        } else {
-            tracing::debug!("Connection is active, waiting for stop command");
-        }
-
-        tokio::time::sleep(time::Duration::from_secs(1)).await;
-    }
+async fn drop_interrupt_when_stopped(mut stop_rx: watch::Receiver<bool>, interrupt: StopSource) {
+    let _ = stop_rx.wait_for(|&stop| stop).await;
+    tracing::info!("Dropping interrupt for connection task as it is stopped");
+    drop(interrupt);
 }
 
 #[instrument(
